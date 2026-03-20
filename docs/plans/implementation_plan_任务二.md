@@ -41,31 +41,34 @@ export const isValidPhone = (phone: string): boolean => {
 ---
 
 ### 步骤二：改造 `HomeView.vue` 的 `<script setup>` 逻辑
-通过 `watch` 结合 `lodash` 防抖实现 300ms 延后取值，并通过 `computed` 集成计算出每个字段的验证状态。
+
+**设计思路：**
+- `isSubmitted`：控制「空值」何时飘红，提交前不骚扰用户。
+- `debouncedInfo`（防抖替身）：格式验证永远基于此对象，而非 `v-model` 原始数据，避免用户还没打完就报错。`watch` + `_.debounce(300ms)` 负责延迟同步替身。
+- `computed` 三合一：每个字段独立负责自己的 `{ valid, message }`，是整个验证的**唯一数据源**。
+- `checkForm`（守门员）：只做两件事——激活 `isSubmitted`、强制同步替身（打破防抖延迟）——然后直接读 `computed.valid` 放行，不再重复写任何正则或判空逻辑（DRY）。
 
 在 `src/views/HomeView.vue` 中的 `<script setup lang="ts">`：
 
-1. 添加依赖引入：
+**① 添加依赖引入**
 ```typescript
+import { computed } from "vue";
 import { isValidEmail, isValidPhone } from '@/utils/validators';
-// 如果未导入 vue 的 computed，请一并加入: import { computed } from "vue";
 ```
 
-2. 找到靠近底部的 `// validation check` 部分，**替换**原有的 `checkForm` 和 `validation` 及 `watch` 内容：
+**② 找到 `// validation check` 部分，替换原有全部逻辑**
 
 ```typescript
-// --- 替换原有的 validation check 逻辑 ---
-
-// 表示是否尝试提交过（用于处理空态立刻飘红的情况）
+// 是否尝试提交过（提交前空值不报错，点击下一步后空值立刻飘红）
 const isSubmitted = ref(false);
 
-// 用于防抖校验的响应式中间对象
+// 防抖替身：格式验证只基于此对象，而非 v-model 原始数据
 const debouncedInfo = reactive({
   email: personalInfo.value.email,
   phone: personalInfo.value.phone,
 });
 
-// 使用 loadash 实现 300ms 延时防抖监听
+// 用独立 watch + debounce(300ms) 分别监听，不共用深度 watch
 watch(
   () => personalInfo.value.email,
   _.debounce((newVal: string) => {
@@ -80,7 +83,7 @@ watch(
   }, 300)
 );
 
-// 姓名验证计算
+// 姓名验证：仅需判空（无格式要求）
 const nameValidation = computed(() => {
   if (isSubmitted.value && _.isEmpty(personalInfo.value.name)) {
     return { valid: false, message: '此字段为必填项' };
@@ -88,54 +91,47 @@ const nameValidation = computed(() => {
   return { valid: true, message: '' };
 });
 
-// 邮箱验证计算
+// 邮箱验证：始终基于防抖替身（checkForm 会在提交时强制同步替身，所以不需要三元判断）
 const emailValidation = computed(() => {
-  // 当点击提交时使用实时值判定，平时依赖防抖值以减少频繁报错
-  const targetEmail = isSubmitted.value ? personalInfo.value.email : debouncedInfo.email;
-  // 必填验证
+  // 空值：仅在提交后报错
   if (isSubmitted.value && _.isEmpty(personalInfo.value.email)) {
     return { valid: false, message: '此字段为必填项' };
   }
-  if (_.isEmpty(targetEmail)) {
-    return { valid: false, message: '' }; // 不提示错，直到按提交
+  // 替身为空时静默（等提交后被步骤①拦截）
+  if (_.isEmpty(debouncedInfo.email)) {
+    return { valid: false, message: '' };
   }
   // 格式验证
-  if (!isValidEmail(targetEmail)) {
+  if (!isValidEmail(debouncedInfo.email)) {
     return { valid: false, message: '请输入有效的邮箱地址' };
   }
   return { valid: true, message: '' };
 });
 
-// 手机号验证计算
+// 手机号验证：逻辑与邮箱相同
 const phoneValidation = computed(() => {
-  const targetPhone = isSubmitted.value ? personalInfo.value.phone : debouncedInfo.phone;
-  // 必填验证
   if (isSubmitted.value && _.isEmpty(personalInfo.value.phone)) {
     return { valid: false, message: '此字段为必填项' };
   }
-  if (_.isEmpty(targetPhone)) {
-    return { valid: false, message: '' }; 
+  if (_.isEmpty(debouncedInfo.phone)) {
+    return { valid: false, message: '' };
   }
-  // 格式验证
-  if (!isValidPhone(targetPhone)) {
+  if (!isValidPhone(debouncedInfo.phone)) {
     return { valid: false, message: '请输入有效的11位手机号' };
   }
   return { valid: true, message: '' };
 });
 
-// 提交按钮触发的拦截验证校验函数
+// 守门员函数：不重复任何验证规则，只读 computed.valid（DRY 原则）
 const checkForm = () => {
   isSubmitted.value = true;
-  // 更新防抖数据防止因为点击过快造成的计算属性没有更新
+  // 强制同步替身，防止用户手速 < 300ms 时防抖未触发导致 computed 读取旧值
   debouncedInfo.email = personalInfo.value.email;
   debouncedInfo.phone = personalInfo.value.phone;
-
-  // 全量校验最新数据
-  if (_.isEmpty(personalInfo.value.name)) return false;
-  if (_.isEmpty(personalInfo.value.email) || !isValidEmail(personalInfo.value.email)) return false;
-  if (_.isEmpty(personalInfo.value.phone) || !isValidPhone(personalInfo.value.phone)) return false;
-  
-  return true;
+  // 直接复用 computed 的结果，有任一不合法则拦截跳转
+  return nameValidation.value.valid
+    && emailValidation.value.valid
+    && phoneValidation.value.valid;
 };
 ```
 

@@ -31,9 +31,9 @@
                   <label for="name" class="label-name">姓名</label>
                   <label
                     for="name"
-                    v-if="validation.nameVal === false"
+                    v-if="nameValidation.valid === false"
                     class="alert"
-                    >此字段为必填项</label
+                    >{{ nameValidation.message }}</label
                   >
                 </div>
                 <input
@@ -41,8 +41,7 @@
                   type="text"
                   id="name"
                   placeholder="例如：张三"
-                  :class="[{ error: validation.nameVal === false }]"
-                  required
+                  :class="[{ error: nameValidation.valid === false }]"
                 />
               </div>
 
@@ -51,19 +50,26 @@
                   <label for="email" class="label-name">电子邮件地址</label>
                   <label
                     for="email"
-                    v-if="validation.emailVal === false"
+                    v-if="emailValidation.valid === false"
                     class="alert"
-                    >此字段为必填项</label
+                    >{{ emailValidation.message }}</label
                   >
                 </div>
-                <input
-                  v-model="personalInfo.email"
-                  type="text"
-                  id="email"
-                  placeholder="例如：zhangsan@example.com"
-                  :class="[{ error: validation.emailVal === false }]"
-                  required
-                />
+                <div class="input-wrapper">
+                  <input
+                    v-model="personalInfo.email"
+                    type="text"
+                    id="email"
+                    placeholder="例如：zhangsan@example.com"
+                    :class="[{ error: emailValidation.valid === false }]"
+                  />
+                  <span
+                    v-if="emailValidation.valid && debouncedInfo.email"
+                    class="success-icon"
+                  >
+                    <IconCheck />
+                  </span>
+                </div>
               </div>
 
               <div class="form form-phone">
@@ -71,19 +77,26 @@
                   <label for="phone" class="label-name">电话号码</label>
                   <label
                     for="phone"
-                    v-if="validation.phoneVal === false"
+                    v-if="phoneValidation.valid === false"
                     class="alert"
-                    >此字段为必填项</label
+                    >{{ phoneValidation.message }}</label
                   >
                 </div>
-                <input
-                  v-model="personalInfo.phone"
-                  type="text"
-                  id="phone"
-                  placeholder="例如：+86 138 0000 0000"
-                  :class="[{ error: validation.phoneVal === false }]"
-                  required
-                />
+                <div class="input-wrapper">
+                  <input
+                    v-model="personalInfo.phone"
+                    type="text"
+                    id="phone"
+                    placeholder="例如：138 0000 0000"
+                    :class="[{ error: phoneValidation.valid === false }]"
+                  />
+                  <span
+                    v-if="phoneValidation.valid && debouncedInfo.phone"
+                    class="success-icon"
+                  >
+                    <IconCheck />
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -215,7 +228,7 @@
 
             <!--          Thank you page          -->
             <div v-if="nowTab === '5'">
-              <diV class="appreciate">
+              <div class="appreciate">
                 <img
                   src="@/assets/images/icon-thank-you.svg"
                   class="thankyou-icon"
@@ -225,7 +238,7 @@
                   感谢您确认订阅！我们希望您使用愉快。如果您需要任何支持，请随时发送电子邮件至
                   support@loremgaming.com 联系我们。
                 </div>
-              </diV>
+              </div>
             </div>
           </div>
           <div
@@ -254,7 +267,7 @@
 
 <script setup lang="ts">
 /* eslint-disable */
-import { reactive, ref, watch } from "vue";
+import { reactive, ref, watch, computed } from "vue";
 import type { Ref } from "vue";
 import { useCommonsStore } from "@/stores/commons";
 import { IContent } from "@/types/content";
@@ -262,6 +275,8 @@ import _ from "lodash";
 import { IStep2, IStep3 } from "@/types/items";
 import { storeToRefs } from "pinia";
 import { clearPersistedState } from "@/plugins/piniaPersistedState";
+import { isValidEmail, isValidPhone } from "@/utils/validators";
+import IconCheck from "@/components/IconCheck.vue";
 
 const tabs = require("@/assets/data/tabs-info.json");
 const content = require("@/assets/data/content.json");
@@ -364,55 +379,100 @@ watch(
 
 // validation check
 
-// step1
-const validation: any = reactive({
-  nameVal: true,
-  emailVal: true,
-  phoneVal: true,
+// 是否提交过的状态判断（处理空态立刻飘红 isSubmitted
+const isSubmitted = ref(false);
+// 防抖校验的响应式中间对象 debouncedInfo
+const debouncedInfo = reactive({
+  email: personalInfo.value.email,
+  phone: personalInfo.value.phone,
+});
+// loadash实现300ms 延时防抖监听 用watch分别监听email和phone
+watch(
+  () => personalInfo.value.email,
+  _.debounce((newValue) => {
+    debouncedInfo.email = newValue;
+  }, 300),
+);
+watch(
+  () => personalInfo.value.phone,
+  _.debounce((newValue) => {
+    debouncedInfo.phone = newValue;
+  }, 300),
+);
+// 姓名验证 nameValidation
+const nameValidation = computed(() => {
+  if (isSubmitted.value && _.isEmpty(personalInfo.value.name))
+    return { valid: false, message: "请填写姓名" };
+  return { valid: true, message: "" };
+});
+// 邮箱验证 emailValidation
+/**
+ * 当点击提交，用实时值判定，依赖防抖值减少频繁报错
+ * 必填验证
+ * 格式验证
+ **/
+const emailValidation = computed(() => {
+  if (isSubmitted.value && _.isEmpty(personalInfo.value.email))
+    return { valid: false, message: "请填写邮箱" };
+  if (_.isEmpty(debouncedInfo.email)) return { valid: true, message: "" };
+  if (!isValidEmail(debouncedInfo.email))
+    return { valid: false, message: "邮箱格式错误" };
+  return { valid: true, message: "" };
 });
 
+/**
+ * 手机号验证 phoneValidation
+ * 必填验证
+ * 格式验证
+ **/
+const phoneValidation = computed(() => {
+  if (isSubmitted.value && _.isEmpty(personalInfo.value.phone))
+    return { valid: false, message: "请填写手机号" };
+  if (_.isEmpty(debouncedInfo.phone)) return { valid: true, message: "" };
+  if (!isValidPhone(debouncedInfo.phone))
+    return { valid: false, message: "手机号格式错误" };
+  return { valid: true, message: "" };
+});
+
+/**
+ * 提交按钮触发拦截验证校验函数 checkForm
+ * 更新防抖数据防止因为点击过快造成计算属性未更新
+ * 判断验证结果是否通过
+ * */
 const checkForm = () => {
-  if (_.isEmpty(personalInfo.value.name)) {
-    validation.nameVal = false;
-    return false;
-  } else {
-    validation.nameVal = true;
-  }
-
-  if (_.isEmpty(personalInfo.value.email)) {
-    validation.emailVal = false;
-    return false;
-  } else {
-    validation.emailVal = true;
-  }
-
-  if (_.isEmpty(personalInfo.value.phone)) {
-    validation.phoneVal = false;
-    return false;
-  } else {
-    validation.phoneVal = true;
-  }
-
-  return true;
+  isSubmitted.value = true;
+  debouncedInfo.email = personalInfo.value.email;
+  debouncedInfo.phone = personalInfo.value.phone;
+  return (
+    nameValidation.value.valid &&
+    emailValidation.value.valid &&
+    phoneValidation.value.valid
+  );
 };
-
-watch(
-  () => personalInfo,
-  () => {
-    if (!_.isEmpty(personalInfo.value.name)) {
-      validation.nameVal = true;
-    }
-    if (!_.isEmpty(personalInfo.value.email)) {
-      validation.emailVal = true;
-    }
-    if (!_.isEmpty(personalInfo.value.phone)) {
-      validation.phoneVal = true;
-    }
-  },
-  { deep: true },
-);
 
 // 함수 실행부（翻译：函数执行部分
 
 setTabContent(nowTab.value);
 </script>
+
+<style scoped>
+/* 自定义输入框包裹器与对勾图标 */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding-right: 40px; /* 为绿色的对勾腾出显示空间，避免文字覆盖 */
+}
+
+.success-icon {
+  position: absolute;
+  right: 15px;
+  color: #28a745; /* 绿色或根据主题自定 */
+  font-size: 16px;
+  pointer-events: none; /* 防止遮挡输入点击 */
+}
+</style>
