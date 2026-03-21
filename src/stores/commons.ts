@@ -14,6 +14,8 @@ export const useCommonsStore = defineStore("commonsStore", () => {
   const addons = ref<Array<IStep3>>([]);
   // 是否是年付
   const isYearly = ref(false);
+  // 记录已完成步骤的ID 存储字符串 completedSteps
+  const completedSteps = ref<string[]>([]);
 
   function setTabActive(tabId: string) {
     nowTab.value = tabId;
@@ -36,6 +38,7 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     isYearly.value = !isYearly.value;
   }
 
+  // 更新重置函数
   function clearForm() {
     // 手动重置数据
     nowTab.value = "1";
@@ -43,8 +46,15 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     plan.value = "1";
     addons.value = [];
     isYearly.value = false;
+    completedSteps.value = [];
     clearPersistedState();
   }
+
+  // 将步骤标记为完成  addCompletedStep
+  const addCompletedStep = (stepId: string) => {
+    if (!completedSteps.value.includes(stepId))
+      completedSteps.value.push(stepId);
+  };
 
   return {
     // state
@@ -53,11 +63,13 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     plan,
     addons,
     isYearly,
+    completedSteps,
     // action
     setTabActive,
     setPlanItem,
     setAddonItems,
     toggleYearly,
     clearForm,
+    addCompletedStep,
   };
 });
