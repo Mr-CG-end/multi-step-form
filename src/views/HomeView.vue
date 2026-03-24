@@ -7,19 +7,19 @@
             <li
               v-for="tab in tabs"
               :key="tab.id"
-              class="step"
+              :class="[
+                'step',
+                {
+                  current: tab.id === nowTab,
+                  completed:
+                    completedSteps.includes(tab.id) && tab.id !== nowTab,
+                  disabled:
+                    !completedSteps.includes(tab.id) && tab.id !== nowTab,
+                },
+              ]"
               @click="goToStep(tab.id)"
             >
-              <div
-                :class="[
-                  'num',
-                  { clicked: tab.id === nowTab },
-                  {
-                    completed:
-                      completedSteps.includes(tab.id) && tab.id !== nowTab,
-                  },
-                ]"
-              >
+              <div class="num">
                 {{ tab.id }}
               </div>
               <div class="item">
@@ -205,38 +205,73 @@
             <!--          STEP 4          -->
             <div v-else-if="nowTab === '4'" class="finishing">
               <div class="costs">
-                <div :class="['plan-wrap', { plus: addons.length !== 0 }]">
-                  <div class="plan">
-                    <div class="name impt-txt">
-                      <div>{{ nowPlan.name }}</div>
-                      <div v-if="!isYearly">&nbsp;（月度）</div>
-                      <div v-if="isYearly">&nbsp;（年度）</div>
-                    </div>
-                    <div @click="setTabContent('2')" class="change-plan">
+                <div class="summary-block personal-summary">
+                  <div class="summary-header">
+                    <div class="impt-txt">个人信息</div>
+                    <button
+                      type="button"
+                      class="change-plan"
+                      @click="setTabContent('1')"
+                    >
                       编辑
-                    </div>
+                    </button>
                   </div>
-                  <div class="plan-cost mg-lft impt-txt">
-                    <span class="">{{
-                      isYearly ? nowPlan.yearly : nowPlan.monthly
-                    }}</span>
+                  <div class="summary-content">
+                    <div>{{ personalInfo.name }}</div>
+                    <div>{{ personalInfo.email }}</div>
+                    <div>{{ personalInfo.phone }}</div>
                   </div>
                 </div>
 
-                <div class="addon-wrap" v-if="addons.length !== 0">
-                  <div v-for="addon in addons" :key="addon.id" class="addons">
-                    <span>{{ addon.title }}</span>
-                    <div class="addon-cost mg-lft">
-                      <span v-if="!isYearly">{{ addon.monthly }}</span>
-                      <span v-if="isYearly">{{ addon.yearly }}</span>
+                <div class="summary-block plan-summary">
+                  <div class="summary-header">
+                    <div class="impt-txt">
+                      {{ nowPlan.name }}{{ isYearly ? "（年度）" : "（月度）" }}
                     </div>
+                    <button
+                      type="button"
+                      class="change-plan"
+                      @click="setTabContent('2')"
+                    >
+                      编辑
+                    </button>
+                  </div>
+                  <div class="summary-content">
+                    <div class="plan-cost impt-txt">
+                      {{ isYearly ? nowPlan.yearly : nowPlan.monthly }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="summary-block addons-summary">
+                  <div class="summary-header">
+                    <div class="impt-txt">附加服务</div>
+                    <button
+                      type="button"
+                      class="change-plan"
+                      @click="setTabContent('3')"
+                    >
+                      编辑
+                    </button>
+                  </div>
+                  <div class="summary-content" v-if="addons.length">
+                    <div v-for="addon in addons" :key="addon.id" class="addons">
+                      <span>{{ addon.title }}</span>
+                      <div class="addon-cost mg-lft">
+                        <span v-if="!isYearly">{{ addon.monthly }}</span>
+                        <span v-else>{{ addon.yearly }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="summary-content" v-else>
+                    <div class="card-des">未选择附加服务</div>
                   </div>
                 </div>
               </div>
 
               <div class="total">
                 <span v-if="!isYearly">总计（每月）</span>
-                <span v-if="isYearly">总计（每年）</span>
+                <span v-else>总计（每年）</span>
                 <span class="total-cost mg-lft">{{ totalCost }}</span>
               </div>
             </div>
@@ -352,8 +387,6 @@ const onSubmit = (): void => {
 const goBack = (): void => {
   setTabContent(String(Number(nowTab.value) - 1));
 };
-
-
 
 // 改为computed
 /**
@@ -525,17 +558,101 @@ setTabContent(nowTab.value);
 
 /* 新增 */
 .step {
-  cursor: not-allowed; /* 默认不可点击 */
-}
-/* 将当前步和已完成步设置为手型指针 */
-.step:has(.completed),
-.step:has(.clicked) {
   cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
-/* 可选：为已完成步骤加一个视觉提示 */
-.num.completed {
-  background-color: rgba(255, 255, 255, 0.3); /* 举例，可根据 UI 规范修改 */
+
+.step .num {
+  border: 1px solid #bde2fd;
+  border-radius: 50%;
   color: #fff;
-  border: 1px solid #fff;
+}
+
+.step.current .num {
+  background-color: #bde2fd;
+  color: #12335e;
+}
+
+.step.completed .num {
+  background-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+  border-color: #fff;
+}
+
+.step.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.step.disabled .num {
+  background-color: transparent;
+  border-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.step.disabled .item {
+  opacity: 0.8;
+}
+
+.summary-block {
+  padding: 16px 0;
+  border-bottom: 1px solid #d3d3d3;
+}
+
+.summary-block:last-child {
+  border-bottom: none;
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.summary-content {
+  display: grid;
+  gap: 8px;
+  color: #9797a1;
+}
+
+.change-plan {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #9797a1;
+  text-decoration: underline;
+  text-underline-position: under;
+  font: inherit;
+}
+
+/* Step 1：修复 input padding 导致的宽度溢出 */
+.form input {
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* 统一让 .forms 行只能纵向滚动，不出现横向滚动条 */
+.forms {
+  overflow: hidden auto;
+}
+
+/* Step 4：finishing 用 flex column，让 costs 和 total 各占自然空间 */
+.finishing {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.finishing .costs {
+  flex: 1;
+  overflow: hidden auto; /* x 轴锁定，y 轴按需滚动 */
+}
+
+.finishing .total {
+  flex-shrink: 0;
 }
 </style>
