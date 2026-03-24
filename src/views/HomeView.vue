@@ -4,8 +4,22 @@
       <div class="box">
         <div class="navbar">
           <ul>
-            <li v-for="tab in tabs" :key="tab.id" class="step">
-              <div :class="['num', { clicked: tab.id === nowTab }]">
+            <li
+              v-for="tab in tabs"
+              :key="tab.id"
+              class="step"
+              @click="goToStep(tab.id)"
+            >
+              <div
+                :class="[
+                  'num',
+                  { clicked: tab.id === nowTab },
+                  {
+                    completed:
+                      completedSteps.includes(tab.id) && tab.id !== nowTab,
+                  },
+                ]"
+              >
                 {{ tab.id }}
               </div>
               <div class="item">
@@ -17,6 +31,7 @@
         </div>
 
         <div class="content">
+          <div v-if="showStepTip" class="step-tip">请按顺序完成步骤</div>
           <div class="title top-area" v-if="nowContent.title">
             {{ nowContent.title }}
           </div>
@@ -197,8 +212,8 @@
                       <div v-if="!isYearly">&nbsp;（月度）</div>
                       <div v-if="isYearly">&nbsp;（年度）</div>
                     </div>
-                    <div @click="() => (nowTab = '2')" class="change-plan">
-                      更改
+                    <div @click="setTabContent('2')" class="change-plan">
+                      编辑
                     </div>
                   </div>
                   <div class="plan-cost mg-lft impt-txt">
@@ -284,10 +299,16 @@ const items = require("@/assets/data/items.json");
 
 const commonsStore = useCommonsStore();
 
-const { isYearly, nowTab, plan, addons, personalInfo } =
+const { isYearly, nowTab, plan, addons, personalInfo, completedSteps } =
   storeToRefs(commonsStore);
 
-const { setAddonItems, setPlanItem, toggleYearly, setTabActive } = commonsStore;
+const {
+  setAddonItems,
+  setPlanItem,
+  toggleYearly,
+  setTabActive,
+  addCompletedStep,
+} = commonsStore;
 
 //left nav
 
@@ -297,6 +318,7 @@ let nowContent: IContent = reactive({
   semititle: "",
 });
 
+// 点击跳转
 const setTabContent = (tabId: string) => {
   setTabActive(tabId);
 
@@ -314,11 +336,15 @@ const onSubmit = (): void => {
     nowTab.value === "3" ||
     nowTab.value === "4"
   ) {
+    // 当前设为已完成
+    addCompletedStep(nowTab.value);
     const nextTab = String(Number(nowTab.value) + 1);
     setTabContent(nextTab);
     // 确认提交后消除持久化数据
     if (nextTab === "5") {
       clearPersistedState();
+      // 清空步骤储存
+      completedSteps.value = [];
     }
   }
 };
@@ -327,55 +353,38 @@ const goBack = (): void => {
   setTabContent(String(Number(nowTab.value) - 1));
 };
 
-// step2
 
-// const isYearly: Ref<boolean> = ref(false);
 
-// const setOptions = () => {
-//   isYearly.value = !isYearly.value;
-// };
+// 改为computed
+/**
+ * 获取当前选择的套餐详情  nowPlan
+ * 实时计算总金额 totalCost
+ *  - 提取纯数字的辅助方法 parseCost
+ *  - 基础套餐费 planCost
+ *  - 附加组件费汇总 addonsCost
+ *  - total 然后按格式返回
+ */
 
-// step4
-let totalCost: Ref<string> = ref("");
-let nowPlan: Ref<IStep2> = ref(_.cloneDeep(items.STEP2[0]));
+const nowPlan = computed(() => {
+  return (
+    items.STEP2.find((item: IStep2) => item.id === plan.value) || items.STEP2[0]
+  );
+});
 
-const setSelectedOptions = () => {
-  items.STEP2.forEach((item: IStep2) => {
-    if (item.id === plan.value) {
-      nowPlan.value = item;
-    }
-  });
-  sumCost();
-};
-
-const sumCost = () => {
-  const planCost: string = isYearly.value
-    ? _.cloneDeep(nowPlan.value).yearly.replace(/[^0-9]/g, "")
-    : _.cloneDeep(nowPlan.value).monthly.replace(/[^0-9]/g, "");
-  let addonCosts: Array<number> = [];
-  addons.value.forEach((addon: IStep3) => {
-    isYearly.value
-      ? addonCosts.push(
-          Number(_.cloneDeep(addon).yearly.replace(/[^0-9]/g, "")),
-        )
-      : addonCosts.push(
-          Number(_.cloneDeep(addon).monthly.replace(/[^0-9]/g, "")),
-        );
-  });
-
-  totalCost.value = isYearly.value
-    ? "$" + String(Number(planCost) + _.sum(addonCosts)) + "/yr"
-    : "$" + String(Number(planCost) + _.sum(addonCosts)) + "/mo";
-};
-
-watch(
-  () => nowTab,
-  () => {
-    if (nowTab.value === "4") {
-      setSelectedOptions();
-    }
-  },
-);
+const parseCost = (str: string) => Number(str.replace(/[^0-9]/g, ""));
+const totalCost = computed(() => {
+  const planCost = isYearly.value
+    ? parseCost(nowPlan.value.yearly)
+    : parseCost(nowPlan.value.monthly);
+  const addonsCost = addons.value.reduce(
+    (sum, addon) =>
+      sum +
+      (isYearly.value ? parseCost(addon.yearly) : parseCost(addon.monthly)),
+    0,
+  );
+  const total = planCost + addonsCost;
+  return isYearly.value ? `$${total}/yr` : `$${total}/mo`;
+});
 
 // validation check
 
@@ -450,6 +459,30 @@ const checkForm = () => {
   );
 };
 
+// 控制步骤顺序提示是否显示  showStepTip 定时清理stepTipTimer
+const showStepTip = ref(false);
+let stepTipTimer: ReturnType<typeof setTimeout> | null = null;
+// 2秒后自动消失 showTip
+const showTip = () => {
+  showStepTip.value = true;
+  if (stepTipTimer) clearTimeout(stepTipTimer);
+  stepTipTimer = setTimeout(() => {
+    showStepTip.value = false;
+  }, 2000);
+};
+// 跳转控制 goToStep
+const goToStep = (targetId: string) => {
+  // 点击当前忽略
+  if (targetId === nowTab.value) return;
+  // 已完成返回
+  if (completedSteps.value.includes(targetId)) {
+    setTabContent(targetId);
+  } else {
+    // 未完成提示
+    showTip();
+  }
+};
+
 // 함수 실행부（翻译：函数执行部分
 
 setTabContent(nowTab.value);
@@ -474,5 +507,35 @@ setTabContent(nowTab.value);
   color: #28a745; /* 绿色或根据主题自定 */
   font-size: 16px;
   pointer-events: none; /* 防止遮挡输入点击 */
+}
+
+.step-tip {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* 新增 */
+.step {
+  cursor: not-allowed; /* 默认不可点击 */
+}
+/* 将当前步和已完成步设置为手型指针 */
+.step:has(.completed),
+.step:has(.clicked) {
+  cursor: pointer;
+}
+/* 可选：为已完成步骤加一个视觉提示 */
+.num.completed {
+  background-color: rgba(255, 255, 255, 0.3); /* 举例，可根据 UI 规范修改 */
+  color: #fff;
+  border: 1px solid #fff;
 }
 </style>
