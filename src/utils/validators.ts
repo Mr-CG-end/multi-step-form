@@ -16,6 +16,8 @@ export const isValidEmail = (email: string): boolean => {
  * @returns 是否符合手机号格式
  */
 export const isValidPhone = (phone: string): boolean => {
+  // 先去除空格，兼容 '138 0000 0000' 格式
+  const normalized = phone.replace(/\s/g, "");
   const phoneRegex = /^1[3-9]\d{9}$/;
-  return phoneRegex.test(phone);
+  return phoneRegex.test(normalized);
 };
