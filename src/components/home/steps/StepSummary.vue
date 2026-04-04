@@ -1,16 +1,15 @@
 <template>
   <div class="finishing">
     <div class="costs">
-      <!-- 个人信息摘要 -->
       <div class="summary-block personal-summary">
         <div class="summary-header">
-          <div class="impt-txt">个人信息</div>
+          <div class="impt-txt">{{ summaryView.personalTitle }}</div>
           <button
             type="button"
             class="change-plan"
             @click="emit('goToStep', '1')"
           >
-            编辑
+            {{ summaryView.editText }}
           </button>
         </div>
         <div class="summary-content">
@@ -20,18 +19,17 @@
         </div>
       </div>
 
-      <!-- 套餐摘要 -->
       <div class="summary-block plan-summary">
         <div class="summary-header">
           <div class="impt-txt">
-            {{ nowPlan.name }}{{ isYearly ? "（年度）" : "（月度）" }}
+            {{ nowPlan.name }}{{ summaryView.planSuffix }}
           </div>
           <button
             type="button"
             class="change-plan"
             @click="emit('goToStep', '2')"
           >
-            编辑
+            {{ summaryView.editText }}
           </button>
         </div>
         <div class="summary-content">
@@ -41,20 +39,19 @@
         </div>
       </div>
 
-      <!-- 附加服务摘要 -->
       <div class="summary-block addons-summary">
         <div class="summary-header">
-          <div class="impt-txt">附加服务</div>
+          <div class="impt-txt">{{ summaryView.addonsTitle }}</div>
           <button
             type="button"
             class="change-plan"
             @click="emit('goToStep', '3')"
           >
-            编辑
+            {{ summaryView.editText }}
           </button>
         </div>
-        <div class="summary-content" v-if="addons.length">
-          <div v-for="addon in addons" :key="addon.id" class="addons">
+        <div class="summary-content" v-if="selectedAddons.length">
+          <div v-for="addon in selectedAddons" :key="addon.id" class="addons">
             <span>{{ addon.title }}</span>
             <div class="addon-cost mg-lft">
               <span v-if="!isYearly">{{ addon.monthly }}</span>
@@ -63,14 +60,13 @@
           </div>
         </div>
         <div class="summary-content" v-else>
-          <div class="card-des">未选择附加服务</div>
+          <div class="card-des">{{ summaryView.noAddonsText }}</div>
         </div>
       </div>
     </div>
 
     <div class="total">
-      <span v-if="!isYearly">总计（每月）</span>
-      <span v-else>总计（每年）</span>
+      <span>{{ summaryView.totalLabel }}</span>
       <span class="total-cost mg-lft">{{ totalCost }}</span>
     </div>
   </div>
@@ -79,42 +75,64 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useCommonsStore } from "@/stores/commons";
-import { STEP2_ITEMS } from "@/constants/formData";
-import type { IStep2 } from "@/types/items";
 
 const emit = defineEmits<{
-  /** 点击「编辑」按钮时通知父组件跳转到指定步骤 */
   (e: "goToStep", tabId: string): void;
 }>();
 
-const { personalInfo, plan, addons, isYearly } = storeToRefs(
+const { t } = useI18n();
+const { personalInfo, plan, addonIds, isYearly } = storeToRefs(
   useCommonsStore(),
 );
 
-/** 当前选择的套餐详情 */
-const nowPlan = computed<IStep2>(() => {
-  return (
-    STEP2_ITEMS.find((item) => item.id === plan.value) || STEP2_ITEMS[0]
-  );
-});
+const summaryView = computed(() => ({
+  personalTitle: t("form.summary.personalInfo"),
+  addonsTitle: t("form.summary.addons"),
+  noAddonsText: t("form.summary.noAddons"),
+  totalLabel: isYearly.value
+    ? t("form.summary.totalYearly")
+    : t("form.summary.totalMonthly"),
+  planSuffix: isYearly.value
+    ? t("form.summary.planSuffix.yearly")
+    : t("form.summary.planSuffix.monthly"),
+  editText: t("common.buttons.edit"),
+}));
 
-/** 从价格字符串中提取纯数字 */
+const nowPlan = computed(() => ({
+  id: plan.value,
+  name: t(`items.plans.${plan.value}.name`),
+  monthly: t(`items.plans.${plan.value}.monthly`),
+  yearly: t(`items.plans.${plan.value}.yearly`),
+}));
+
+const selectedAddons = computed(() =>
+  addonIds.value.map((id) => ({
+    id: id,
+    title: t(`items.addons.${id}.title`),
+    monthly: t(`items.addons.${id}.monthly`),
+    yearly: t(`items.addons.${id}.yearly`),
+  })),
+);
+
 const parseCost = (str: string): number => Number(str.replace(/[^0-9]/g, ""));
 
-/** 实时计算总金额（基础套餐 + 附加服务） */
 const totalCost = computed(() => {
   const planCost = isYearly.value
     ? parseCost(nowPlan.value.yearly)
     : parseCost(nowPlan.value.monthly);
-  const addonsCost = addons.value.reduce(
+  const addonsCost = selectedAddons.value.reduce(
     (sum, addon) =>
       sum +
       (isYearly.value ? parseCost(addon.yearly) : parseCost(addon.monthly)),
     0,
   );
   const total = planCost + addonsCost;
-  return isYearly.value ? `¥${total}/年` : `¥${total}/月`;
+
+  return isYearly.value
+    ? t("items.priceFormat.yearly", { amount: total })
+    : t("items.priceFormat.monthly", { amount: total });
 });
 </script>
 
@@ -152,7 +170,6 @@ const totalCost = computed(() => {
   font: inherit;
 }
 
-/* finishing 布局：costs 和 total 各占自然空间 */
 .finishing {
   display: flex;
   flex-direction: column;
@@ -161,7 +178,7 @@ const totalCost = computed(() => {
 
 .finishing .costs {
   flex: 1;
-  overflow: hidden auto; /* x 轴锁定，y 轴按需滚动 */
+  overflow: hidden auto;
 }
 
 .finishing .total {

@@ -2,26 +2,27 @@
   <div>
     <div class="form form-name">
       <div class="labels">
-        <label for="name" class="label-name">姓名</label>
-        <label
-          for="name"
-          v-if="nameValidation.valid === false"
-          class="alert"
-          >{{ nameValidation.message }}</label
-        >
+        <label for="name" class="label-name">{{
+          $t("form.labels.name")
+        }}</label>
+        <label for="name" v-if="nameValidation.valid === false" class="alert">{{
+          nameValidation.message
+        }}</label>
       </div>
       <input
         v-model="personalInfo.name"
         type="text"
         id="name"
-        placeholder="例如：张三"
+        :placeholder="$t('form.placeholders.name')"
         :class="[{ error: nameValidation.valid === false }]"
       />
     </div>
 
     <div class="form form-email">
       <div class="labels">
-        <label for="email" class="label-name">电子邮件地址</label>
+        <label for="email" class="label-name">{{
+          $t("form.labels.email")
+        }}</label>
         <label
           for="email"
           v-if="emailValidation.valid === false"
@@ -34,7 +35,7 @@
           v-model="personalInfo.email"
           type="text"
           id="email"
-          placeholder="例如：zhangsan@example.com"
+          :placeholder="$t('form.placeholders.email')"
           :class="[{ error: emailValidation.valid === false }]"
         />
         <span
@@ -48,7 +49,9 @@
 
     <div class="form form-phone">
       <div class="labels">
-        <label for="phone" class="label-name">电话号码</label>
+        <label for="phone" class="label-name">{{
+          $t("form.labels.phone")
+        }}</label>
         <label
           for="phone"
           v-if="phoneValidation.valid === false"
@@ -61,7 +64,7 @@
           v-model="personalInfo.phone"
           type="text"
           id="phone"
-          placeholder="例如：138 0000 0000"
+          :placeholder="$t('form.placeholders.phone')"
           :class="[{ error: phoneValidation.valid === false }]"
         />
         <span

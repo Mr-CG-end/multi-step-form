@@ -1,10 +1,12 @@
 import { ref, reactive, watch, computed, onUnmounted } from "vue";
 import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useCommonsStore } from "@/stores/commons";
 import _ from "lodash";
 import { isValidEmail, isValidPhone } from "@/utils/validators";
 
 export function usePersonalInfoValidation() {
+  const { t } = useI18n();
   const { personalInfo } = storeToRefs(useCommonsStore());
 
   // 是否提交过——控制空值报错时机，点击提交前不骚扰用户
@@ -37,7 +39,7 @@ export function usePersonalInfoValidation() {
 
   const nameValidation = computed(() => {
     if (isSubmitted.value && _.isEmpty(personalInfo.value.name))
-      return { valid: false, message: "请填写姓名" };
+      return { valid: false, message: t("validation.required.name") };
     return { valid: true, message: "" };
   });
 
@@ -48,10 +50,10 @@ export function usePersonalInfoValidation() {
    */
   const emailValidation = computed(() => {
     if (isSubmitted.value && _.isEmpty(personalInfo.value.email))
-      return { valid: false, message: "请填写邮箱" };
+      return { valid: false, message: t("validation.required.email") };
     if (_.isEmpty(debouncedInfo.email)) return { valid: true, message: "" };
     if (!isValidEmail(debouncedInfo.email))
-      return { valid: false, message: "邮箱格式错误" };
+      return { valid: false, message: t("validation.format.email") };
     return { valid: true, message: "" };
   });
 
@@ -62,10 +64,10 @@ export function usePersonalInfoValidation() {
    */
   const phoneValidation = computed(() => {
     if (isSubmitted.value && _.isEmpty(personalInfo.value.phone))
-      return { valid: false, message: "请填写手机号" };
+      return { valid: false, message: t("validation.required.phone") };
     if (_.isEmpty(debouncedInfo.phone)) return { valid: true, message: "" };
     if (!isValidPhone(debouncedInfo.phone))
-      return { valid: false, message: "手机号格式错误" };
+      return { valid: false, message: t("validation.format.phone") };
     return { valid: true, message: "" };
   });
 

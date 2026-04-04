@@ -6,7 +6,7 @@
         <div class="navbar">
           <ul>
             <li
-              v-for="tab in TABS"
+              v-for="tab in tabsView"
               :key="tab.id"
               :class="[
                 'step',
@@ -32,22 +32,21 @@
         </div>
 
         <!-- 右侧内容区 -->
-        <div class="content">
-          <div v-if="showStepTip" class="step-tip">请按顺序完成步骤</div>
-          <div class="title top-area" v-if="nowContent?.title">
-            {{ nowContent.title }}
+          <div class="content">
+          <div v-if="showStepTip" class="step-tip">
+            {{ pageView.stepTip }}
           </div>
-          <div class="semi-title" v-if="nowContent?.semititle">
-            {{ nowContent.semititle }}
+          <div class="title top-area" v-if="pageView.title">
+            {{ pageView.title }}
+          </div>
+          <div class="semi-title" v-if="pageView.semititle">
+            {{ pageView.semititle }}
           </div>
           <div class="forms">
             <StepPersonalInfo v-if="nowTab === '1'" ref="stepPersonalRef" />
             <StepPlan v-else-if="nowTab === '2'" />
             <StepAddons v-else-if="nowTab === '3'" />
-            <StepSummary
-              v-else-if="nowTab === '4'"
-              @go-to-step="goToStep"
-            />
+            <StepSummary v-else-if="nowTab === '4'" @go-to-step="goToStep" />
             <StepThankYou v-if="nowTab === '5'" />
           </div>
           <!-- 底部操作按钮 -->
@@ -56,17 +55,17 @@
             v-if="nowTab !== '5'"
           >
             <button class="lft-btn" @click="goBack" v-if="nowTab !== '1'">
-              返回
+              {{ pageView.backText }}
             </button>
             <button class="rgt-btn" v-if="nowTab !== '4'" @click="onSubmit">
-              下一步
+              {{ pageView.nextText }}
             </button>
             <button
               class="rgt-btn confirm"
               v-else-if="nowTab === '4'"
               @click="onSubmit"
             >
-              确认
+              {{ pageView.confirmText }}
             </button>
           </div>
         </div>
@@ -78,10 +77,10 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from "vue";
 import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useCommonsStore } from "@/stores/commons";
 import { clearPersistedState } from "@/plugins/piniaPersistedState";
-import { TABS, CONTENT } from "@/constants/formData";
-import type { IContent } from "@/types/content";
+import { TABS } from "@/constants/formData";
 
 import StepPersonalInfo from "@/components/home/steps/StepPersonalInfo.vue";
 import StepPlan from "@/components/home/steps/StepPlan.vue";
@@ -90,20 +89,33 @@ import StepSummary from "@/components/home/steps/StepSummary.vue";
 import StepThankYou from "@/components/home/steps/StepThankYou.vue";
 
 const commonsStore = useCommonsStore();
+const { t } = useI18n();
 const { nowTab, completedSteps } = storeToRefs(commonsStore);
 const { setTabActive, addCompletedStep } = commonsStore;
 
 // ---- 步骤组件 ref ----
 
-const stepPersonalRef = ref<InstanceType<typeof StepPersonalInfo> | null>(
-  null,
-);
+const stepPersonalRef = ref<InstanceType<typeof StepPersonalInfo> | null>(null);
 
 // ---- 当前步骤文案（替代原来的 reactive 手动赋值） ----
 
-const nowContent = computed<IContent | undefined>(() => {
-  return CONTENT.find((item) => item.id === nowTab.value);
-});
+const tabsView = computed(() =>
+  TABS.map((tab) => ({
+    ...tab,
+    step: t(`steps.step${tab.id}.step`),
+    name: t(`steps.step${tab.id}.name`),
+  })),
+);
+
+const pageView = computed(() => ({
+  stepTip: t("common.toast.stepOrder"),
+  backText: t("common.buttons.back"),
+  nextText: t("common.buttons.next"),
+  confirmText: t("common.buttons.confirm"),
+  title: nowTab.value === "5" ? "" : t(`steps.content.step${nowTab.value}.title`),
+  semititle:
+    nowTab.value === "5" ? "" : t(`steps.content.step${nowTab.value}.semititle`),
+}));
 
 // ---- 流程控制 ----
 
@@ -180,9 +192,7 @@ onUnmounted(() => {
 /* 步骤导航样式 */
 .step {
   cursor: pointer;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .step .num {
@@ -215,10 +225,5 @@ onUnmounted(() => {
 
 .step.disabled .item {
   opacity: 0.8;
-}
-
-/* 统一让 .forms 行只能纵向滚动，不出现横向滚动条 */
-.forms {
-  overflow: hidden auto;
 }
 </style>

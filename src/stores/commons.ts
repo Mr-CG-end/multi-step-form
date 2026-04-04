@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { IPersonal, IStep3 } from "@/types/items";
+import { IPersonal } from "@/types/items";
 import { clearPersistedState } from "@/plugins/piniaPersistedState";
 import { ref } from "vue";
 
@@ -11,7 +11,7 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     phone: "",
   });
   const plan = ref("1");
-  const addons = ref<Array<IStep3>>([]);
+  const addonIds = ref<string[]>([]);
   // 是否是年付
   const isYearly = ref(false);
   // 记录已完成步骤的ID 存储字符串 completedSteps
@@ -25,12 +25,12 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     plan.value = planId;
   }
 
-  function setAddonItems(addon: IStep3) {
-    const index = addons.value.findIndex((a) => a.id === addon.id);
+  function setAddonItems(addon: string) {
+    const index = addonIds.value.indexOf(addon);
     if (index === -1) {
-      addons.value.push(addon);
+      addonIds.value.push(addon);
     } else {
-      addons.value.splice(index, 1);
+      addonIds.value.splice(index, 1);
     }
   }
 
@@ -44,7 +44,7 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     nowTab.value = "1";
     personalInfo.value = { name: "", email: "", phone: "" };
     plan.value = "1";
-    addons.value = [];
+    addonIds.value = [];
     isYearly.value = false;
     completedSteps.value = [];
     clearPersistedState();
@@ -61,7 +61,7 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     nowTab,
     personalInfo,
     plan,
-    addons,
+    addonIds,
     isYearly,
     completedSteps,
     // action
