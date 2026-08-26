@@ -1,3 +1,5 @@
+// 业务数据类型
+
 export interface IPersonal {
   name: string;
   email: string;
