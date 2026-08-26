@@ -48,8 +48,10 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { setStoredLocale } from "@/i18n";
+import { useLanguageTransition } from "@/composables/useLanguageTransition";
 
 const { locale } = useI18n();
+const { switchWithDissolve, isTransitioning } = useLanguageTransition();
 
 const languages = [
   { code: "zh-CN", label: "简体中文" },
@@ -66,13 +68,25 @@ const currentLanguageLabel = computed(() => {
 });
 
 const toggleDropdown = () => {
+  if (isTransitioning.value) return;
   isOpen.value = !isOpen.value;
 };
 
 const selectLanguage = (code: string) => {
-  locale.value = code;
-  setStoredLocale(code);
-  isOpen.value = false; // 选择后隐藏
+  if (code === locale.value || isTransitioning.value) {
+    isOpen.value = false;
+    return;
+  }
+
+  isOpen.value = false; // 选择后先收起下拉菜单
+
+  // 选取需要应用轻烟消散与凝聚动效的页面核心内容区域（以整块协调过渡，避免局部错位）
+  const targetSelectors = ".navbar ul, .content, .agent-panel";
+
+  switchWithDissolve(targetSelectors, () => {
+    locale.value = code;
+    setStoredLocale(code);
+  });
 };
 
 // 点击外部区域自动关闭下拉框
