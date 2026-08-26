@@ -4,3 +4,9 @@ declare module '*.vue' {
   const component: DefineComponent<{}, {}, any>
   export default component
 }
+
+interface Window {
+  pageAgent?: import('@/types/page-agent').IPageAgentInstance;
+  PageAgent?: import('@/types/page-agent').IPageAgentConstructor;
+}
+
