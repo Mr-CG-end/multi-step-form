@@ -3,6 +3,7 @@ import steps from "./steps";
 import form from "./form";
 import validation from "./validation";
 import items from "./items";
+import agent from "./agent";
 
 export default {
   common,
@@ -10,4 +11,5 @@ export default {
   form,
   validation,
   items,
+  agent,
 };
