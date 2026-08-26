@@ -4,14 +4,21 @@
       <button
         v-for="addon in addonsView"
         :key="addon.id"
+        type="button"
         :class="[
           'addon non-selected',
           { selected: addonIds.includes(addon.id) },
         ]"
+        :aria-pressed="addonIds.includes(addon.id)"
+        :aria-label="`${addon.title}, ${addon.semititle}, ${!isYearly ? addon.monthly : addon.yearly}`"
         @click="setAddonItems(addon.id)"
       >
         <span :class="['checkbox', { check: addonIds.includes(addon.id) }]">
-          <img src="@/assets/images/icon-checkmark.svg" />
+          <img
+            src="@/assets/images/icon-checkmark.svg"
+            alt=""
+            aria-hidden="true"
+          />
         </span>
         <div class="txts">
           <div class="card-nm">{{ addon.title }}</div>
@@ -51,3 +58,12 @@ const addonsView = computed(() =>
   })),
 );
 </script>
+
+<style scoped lang="scss">
+/* 附加服务卡片键盘聚焦高亮 */
+.addon:focus-visible {
+  outline: 2px solid #534D93;
+  outline-offset: 2px;
+}
+</style>
+
