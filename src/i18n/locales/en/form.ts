@@ -6,7 +6,7 @@ export default {
   },
   placeholders: {
     name: "e.g. Stephen King",
-    email: "e.g. stephenking@lorem.com",
+    email: "e.g. stephenking{'@'}lorem.com",
     phone: "e.g. +1 234 567 890",
   },
   summary: {

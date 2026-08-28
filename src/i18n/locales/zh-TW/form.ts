@@ -6,7 +6,7 @@ export default {
   },
   placeholders: {
     name: "例如：張三",
-    email: "例如：zhangsan@example.com",
+    email: "例如：zhangsan{'@'}example.com",
     phone: "例如：0912 345 678",
   },
   summary: {

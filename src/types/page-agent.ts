@@ -1,57 +1,80 @@
-import type { Ref } from 'vue';
+import type { Ref } from "vue";
+import type { AgentActivityState, FormIntent } from "@/types/form-assistant";
 
-/**
- * Page Agent 演示运行状态
- */
 export type PageAgentDemoStatus =
-  | 'idle'
-  | 'loading'
-  | 'running'
-  | 'completed'
-  | 'error'
-  | 'stopped';
+  | "idle"
+  | "loading"
+  | "running"
+  | "completed"
+  | "error"
+  | "stopped";
 
-/**
- * Page Agent 实例执行返回结果
- */
-export interface IPageAgentExecutionResult {
-  success: boolean;
+export interface IPageAgentActivity {
+  type: "thinking" | "executing" | "executed" | "retrying" | "error";
+  tool?: string;
+  input?: unknown;
+  output?: string;
   message?: string;
+  attempt?: number;
+  maxAttempts?: number;
 }
 
-/**
- * Page Agent 页面实例接口
- */
-export interface IPageAgentInstance {
-  status?: string;
-  execute: (task: string) => Promise<IPageAgentExecutionResult>;
-  stop: () => Promise<void> | void;
+export interface IPageAgentExecutionResult {
+  success: boolean;
+  data?: string;
+  message?: string;
+  history?: unknown[];
+}
+
+export interface IPageAgentPanel {
   dispose: () => void;
 }
 
-/**
- * Page Agent 构造函数接口
- */
-export interface IPageAgentConstructor {
-  new (): IPageAgentInstance;
+export interface IPageAgentConfig {
+  model: string;
+  baseURL: string;
+  apiKey: string;
+  language: "zh-CN" | "en-US";
+  promptForNextTask?: boolean;
+  transformPageContent?: (content: string) => string | Promise<string>;
 }
 
-/**
- * Composable 执行返回的统一结果契约
- */
+export interface IPageAgentInstance {
+  status?: string;
+  task?: string;
+  lastResult?: IPageAgentExecutionResult | null;
+  panel?: IPageAgentPanel;
+  onAskUser?: (
+    question: string,
+    options?: { signal: AbortSignal },
+  ) => Promise<string>;
+  execute: (task: string) => Promise<IPageAgentExecutionResult>;
+  stop: () => Promise<void> | void;
+  dispose: () => void;
+  addEventListener: (type: string, listener: EventListener) => void;
+  removeEventListener: (type: string, listener: EventListener) => void;
+}
+
+export interface IPageAgentConstructor {
+  new (config: IPageAgentConfig): IPageAgentInstance;
+}
+
 export interface IPageAgentDemoResult {
   success: boolean;
   message: string;
+  repaired: boolean;
 }
 
-/**
- * Composable 暴露给 UI 的控制器契约
- */
 export interface IPageAgentDemoControls {
   status: Readonly<Ref<PageAgentDemoStatus>>;
   errorMessage: Readonly<Ref<string>>;
+  activityState: Readonly<Ref<AgentActivityState>>;
+  activity: Readonly<Ref<IPageAgentActivity | null>>;
   load: (locale: string) => Promise<void>;
-  execute: (preference: string, locale: string) => Promise<IPageAgentDemoResult>;
+  execute: (
+    intent: FormIntent,
+    locale: string,
+  ) => Promise<IPageAgentDemoResult>;
   stop: () => Promise<void>;
   dispose: () => void;
 }

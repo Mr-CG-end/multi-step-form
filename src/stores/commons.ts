@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { IPersonal } from "@/types/items";
 import { clearPersistedState } from "@/plugins/piniaPersistedState";
 import { ref } from "vue";
+import type { FormIntent, CommonsSnapshot } from "@/types/form-assistant";
 
 export const useCommonsStore = defineStore("commonsStore", () => {
   const nowTab = ref("1");
@@ -38,6 +39,59 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     isYearly.value = !isYearly.value;
   }
 
+  function createSnapshot(): CommonsSnapshot {
+    return {
+      nowTab: nowTab.value,
+      personalInfo: { ...personalInfo.value },
+      plan: plan.value,
+      addonIds: [...addonIds.value],
+      isYearly: isYearly.value,
+      completedSteps: [...completedSteps.value],
+    };
+  }
+
+  function restoreSnapshot(snapshot: CommonsSnapshot) {
+    nowTab.value = snapshot.nowTab;
+    personalInfo.value = { ...snapshot.personalInfo };
+    plan.value = snapshot.plan;
+    addonIds.value = [...snapshot.addonIds];
+    isYearly.value = snapshot.isYearly;
+    completedSteps.value = [...snapshot.completedSteps];
+  }
+
+  function prepareAssistantRun(intent: FormIntent) {
+    personalInfo.value = { ...intent.personalInfo };
+    plan.value = "1";
+    addonIds.value = [];
+    isYearly.value = false;
+    completedSteps.value = ["1"];
+    nowTab.value = "2";
+  }
+
+  function applyAssistantIntent(intent: FormIntent) {
+    personalInfo.value = { ...intent.personalInfo };
+    plan.value = intent.plan;
+    addonIds.value = [...intent.addonIds];
+    isYearly.value = intent.billingCycle === "yearly";
+    completedSteps.value = ["1", "2", "3"];
+    nowTab.value = "4";
+  }
+
+  function matchesAssistantIntent(intent: FormIntent): boolean {
+    const expectedAddons = [...intent.addonIds].sort();
+    const actualAddons = [...addonIds.value].sort();
+    return (
+      personalInfo.value.name === intent.personalInfo.name &&
+      personalInfo.value.email === intent.personalInfo.email &&
+      personalInfo.value.phone.replace(/\s/g, "") ===
+        intent.personalInfo.phone.replace(/\s/g, "") &&
+      plan.value === intent.plan &&
+      isYearly.value === (intent.billingCycle === "yearly") &&
+      JSON.stringify(actualAddons) === JSON.stringify(expectedAddons) &&
+      nowTab.value === "4"
+    );
+  }
+
   // 更新重置函数
   function clearForm() {
     // 手动重置数据
@@ -69,6 +123,11 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     setPlanItem,
     setAddonItems,
     toggleYearly,
+    createSnapshot,
+    restoreSnapshot,
+    prepareAssistantRun,
+    applyAssistantIntent,
+    matchesAssistantIntent,
     clearForm,
     addCompletedStep,
   };

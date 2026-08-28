@@ -1,549 +1,425 @@
 <template>
-  <div class="page-agent-wrapper">
-    <!-- 浮动入口按钮：固定在屏幕右下角，避免遮挡主表单或右上角语言切换器 -->
+  <div
+    class="page-agent-root"
+    data-page-agent-ignore="true"
+    data-browser-use-ignore="true"
+    :class="{
+      'is-page-hidden': isPageHidden,
+      'is-dragging': isDragging,
+    }"
+  >
+    <div ref="trailLayerRef" class="orb-trail-layer" aria-hidden="true"></div>
+
     <button
-      ref="floatBtnRef"
+      ref="orbRef"
       type="button"
-      class="agent-float-btn"
-      :class="{ 'is-active': isOpen, 'is-running': isRunning }"
+      class="agent-orb"
+      :class="orbStateClass"
       :aria-expanded="isOpen"
       aria-controls="page-agent-panel"
       :aria-label="t('agent.accessibility.openPanel')"
-      @click="togglePanel"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerCancel"
+      @click="onOrbClick"
     >
-      <span class="btn-icon" aria-hidden="true">
-        <!-- 运行中的脉冲动画指示器 -->
-        <span v-if="isRunning" class="pulse-indicator"></span>
-        <!-- Sparkles / Robot 矢量图标 -->
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
+      <AgentOrbVisual :state="status" :paused="isPageHidden" :active="isOpen || isDragging" />
+      <span class="orb-core">
+        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
           <path
-            d="M12 2L14.39 8.26L21 9.27L16 13.97L17.45 20.73L12 17.27L6.55 20.73L8 13.97L3 9.27L9.61 8.26L12 2Z"
+            d="M16 5.5c1.3 4.1 3.5 6.3 7.6 7.6-4.1 1.3-6.3 3.5-7.6 7.6-1.3-4.1-3.5-6.3-7.6-7.6 4.1-1.3 6.3-3.5 7.6-7.6Z"
             stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
+            stroke-width="1.8"
             stroke-linejoin="round"
+          />
+          <path
+            d="M24.4 20.8c.6 1.9 1.6 2.9 3.5 3.5-1.9.6-2.9 1.6-3.5 3.5-.6-1.9-1.6-2.9-3.5-3.5 1.9-.6 2.9-1.6 3.5-3.5Z"
+            fill="currentColor"
           />
         </svg>
       </span>
-      <span class="btn-label">{{ t("agent.entry") }}</span>
     </button>
 
-    <!-- 移动端全屏半透明遮罩，点击可快速收起抽屉 -->
-    <Transition name="fade">
-      <div
-        v-if="isOpen"
-        class="agent-backdrop"
-        aria-hidden="true"
-        @click="closePanel"
-      ></div>
-    </Transition>
-
-    <!-- 主演示面板：桌面端为右下悬浮窗，移动端为底部抽屉 -->
-    <Transition name="slide-panel">
-      <section
-        v-if="isOpen"
-        id="page-agent-panel"
-        ref="panelRef"
-        tabindex="-1"
-        class="agent-panel"
-        role="region"
-        :aria-label="t('agent.accessibility.panelTitle')"
-      >
-        <!-- 抽屉顶部拖动条（移动端视觉标识） -->
-        <div class="drawer-handle" aria-hidden="true"></div>
-
-        <!-- 面板头部：标题与关闭按钮 -->
+    <section
+      v-if="isOpen"
+      id="page-agent-panel"
+      ref="panelRef"
+      class="agent-panel-positioner"
+      :data-placement="panelPlacement"
+      role="dialog"
+      aria-modal="false"
+      :aria-label="t('agent.accessibility.panelTitle')"
+    >
+      <div class="agent-panel-surface">
         <header class="panel-header">
-          <div class="header-info">
-            <h2 class="panel-title">{{ t("agent.title") }}</h2>
-            <p class="panel-subtitle">{{ t("agent.subtitle") }}</p>
+          <div>
+            <p class="panel-eyebrow">{{ t("agent.entry") }}</p>
+            <h2>{{ t("agent.title") }}</h2>
           </div>
           <button
             type="button"
-            class="close-btn"
+            class="icon-button"
             :aria-label="t('agent.accessibility.closePanel')"
             @click="closePanel"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M1 1L13 13M1 13L13 1"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              />
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
             </svg>
           </button>
         </header>
 
-        <!-- 场景 A：首次使用条款同意视图 -->
-        <div v-if="showConsentView" class="panel-body consent-view">
-          <div class="consent-card">
-            <h3 class="consent-title">{{ t("agent.consent.title") }}</h3>
-            <p class="consent-intro">{{ t("agent.consent.intro") }}</p>
-            <ul class="consent-list">
-              <li>{{ t("agent.consent.terms.demo") }}</li>
-              <li>{{ t("agent.consent.terms.transmission") }}</li>
-              <li>{{ t("agent.consent.terms.privacy") }}</li>
-              <li>{{ t("agent.consent.terms.rateLimit") }}</li>
-            </ul>
-          </div>
+        <div v-if="!hasConsented" class="consent-view">
+          <p class="consent-intro">{{ t("agent.consent.intro") }}</p>
+          <ul>
+            <li>{{ t("agent.consent.terms.localPersonal") }}</li>
+            <li>{{ t("agent.consent.terms.transmission") }}</li>
+            <li>{{ t("agent.consent.terms.rateLimit") }}</li>
+          </ul>
           <div class="consent-actions">
             <button
+              ref="consentButtonRef"
               type="button"
-              class="primary-action-btn"
-              @click="handleAgreeConsent"
+              class="primary-button"
+              @click="agreeConsent"
             >
               {{ t("agent.consent.agree") }}
             </button>
-            <button
-              type="button"
-              class="secondary-action-btn"
-              @click="handleDeclineConsent"
-            >
+            <button type="button" class="text-button" @click="closePanel">
               {{ t("agent.consent.decline") }}
             </button>
           </div>
         </div>
 
-        <!-- 场景 B：已同意后的指令交互视图 -->
-        <div v-else class="panel-body interactive-view">
-          <!-- 预设指令区域 -->
-          <div class="section-block">
-            <h3 class="section-title">{{ t("agent.presets.title") }}</h3>
-            <div class="presets-list">
+        <template v-else>
+          <div ref="messagesRef" class="messages" aria-live="polite">
+            <article
+              v-for="message in messages"
+              :key="message.id"
+              class="message"
+              :class="[`is-${message.role}`, `is-${message.kind}`]"
+            >
+              <span v-if="message.role !== 'user'" class="message-mark" aria-hidden="true"></span>
+              <p>{{ message.content }}</p>
+            </article>
+
+            <div v-if="showPresets" class="preset-chips">
               <button
-                v-for="(preset, index) in presetCommands"
-                :key="index"
+                v-for="preset in presetCommands"
+                :key="preset"
                 type="button"
-                class="preset-item-btn"
-                :disabled="isControlsDisabled"
-                @click="handleSelectPreset(preset)"
+                :disabled="isRunning"
+                @click="submitCommand(preset)"
               >
-                <span class="preset-index">#{{ index + 1 }}</span>
-                <span class="preset-text">{{ preset }}</span>
+                {{ preset }}
               </button>
             </div>
           </div>
 
-          <!-- 自定义偏好输入区域 -->
-          <div class="section-block">
-            <div class="section-header-row">
-              <h3 class="section-title">{{ t("agent.custom.title") }}</h3>
-              <span
-                class="char-counter"
-                :class="{ 'is-limit': isCharLimitReached }"
-              >
-                {{ customPrompt.length }}/{{ MAX_PROMPT_LENGTH }}
-              </span>
-            </div>
-            <div class="input-wrapper">
+          <div class="runtime-status" :class="`is-${status}`" role="status">
+            <span class="runtime-dot" aria-hidden="true"></span>
+            <span>{{ runtimeStatusText }}</span>
+            <button v-if="isRunning" type="button" @click="handleStop">
+              {{ t("agent.custom.stop") }}
+            </button>
+          </div>
+
+          <form class="composer" @submit.prevent="submitCurrentCommand">
+            <label for="agent-command">{{ t("agent.custom.title") }}</label>
+            <div class="composer-row">
               <textarea
-                ref="customTextareaRef"
-                v-model="customPrompt"
-                class="custom-textarea"
-                :class="{ 'has-error': hasValidationError }"
-                :maxlength="MAX_PROMPT_LENGTH"
-                :placeholder="t('agent.custom.placeholder')"
-                :disabled="isControlsDisabled"
-                rows="3"
-                @keydown.ctrl.enter="handleExecuteCustom"
-                @keydown.meta.enter="handleExecuteCustom"
+                id="agent-command"
+                ref="inputRef"
+                v-model="command"
+                :placeholder="composerPlaceholder"
+                maxlength="300"
+                rows="2"
+                @keydown.enter.exact.prevent="submitCurrentCommand"
               ></textarea>
-            </div>
-          </div>
-
-          <!-- 主操作按钮：运行中展示停止，空闲时展示执行 -->
-          <div class="actions-block">
-            <button
-              v-if="isRunning"
-              type="button"
-              class="stop-action-btn"
-              @click="handleStop"
-            >
-              <svg
-                class="btn-svg-icon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="currentColor"
+              <button
+                type="submit"
+                class="send-button"
+                :disabled="!command.trim() || isRunning"
+                :aria-label="t('agent.custom.execute')"
               >
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-              </svg>
-              <span>{{ t("agent.custom.stop") }}</span>
-            </button>
-            <button
-              v-else
-              type="button"
-              class="primary-action-btn"
-              :disabled="isExecuteDisabled"
-              @click="handleExecuteCustom"
-            >
-              <svg
-                v-if="isLoading"
-                class="spinner-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-dasharray="32"
-                  stroke-linecap="round"
-                />
-              </svg>
-              <span>{{ t("agent.custom.execute") }}</span>
-            </button>
-          </div>
-
-          <!-- 运行状态与错误反馈区域 -->
-          <div
-            class="status-container"
-            :class="statusContainerClass"
-            :role="statusAriaRole"
-            aria-live="polite"
-          >
-            <div class="status-indicator-dot"></div>
-            <div class="status-content">
-              <p class="status-text">{{ currentStatusText }}</p>
-              <p v-if="hasErrorMessage" class="error-detail-text">
-                {{ formattedErrorMessage }}
-              </p>
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M3.5 10h12M11 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
             </div>
-          </div>
-
-          <!-- 底部固定虚构数据与安全说明提示 -->
-          <footer class="panel-footer-notice">
-            <p>{{ t("agent.notice.disclaimer") }}</p>
-          </footer>
-        </div>
-      </section>
-    </Transition>
+            <p class="privacy-note">{{ t("agent.notice.localPrivacy") }}</p>
+          </form>
+        </template>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from "vue";
 import { useI18n } from "vue-i18n";
+import AgentOrbVisual from "@/components/AgentOrbVisual.vue";
+import { useCommonsStore } from "@/stores/commons";
 import { usePageAgentDemo } from "@/composables/usePageAgentDemo";
+import { useDraggableAgentOrb } from "@/composables/useDraggableAgentOrb";
+import {
+  parseFormCommand,
+  toCompleteFormIntent,
+} from "@/utils/formCommandParser";
+import type {
+  AssistantMessage,
+  ClarificationField,
+  PartialFormIntent,
+} from "@/types/form-assistant";
 
-// 本地存储同意状态的 Key 与版本标识
-const CONSENT_STORAGE_KEY = "multi-step-form-page-agent-consent";
-const CONSENT_VERSION = "1";
-// 自定义输入最大字符数限制
-const MAX_PROMPT_LENGTH = 300;
+const CONSENT_STORAGE_KEY = "multi-step-form-page-agent-consent-v2";
+const CONSENT_VERSION = "2";
 
 const { t, locale } = useI18n();
-const { status, errorMessage, load, execute, stop, dispose } =
+const store = useCommonsStore();
+const { status, activityState, activity, load, execute, stop, dispose } =
   usePageAgentDemo();
 
-// DOM 节点引用，用于键盘无障碍焦点管理
-const floatBtnRef = ref<HTMLButtonElement | null>(null);
+const orbRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
-const customTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const trailLayerRef = ref<HTMLElement | null>(null);
+const messagesRef = ref<HTMLElement | null>(null);
+const inputRef = ref<HTMLTextAreaElement | null>(null);
+const consentButtonRef = ref<HTMLButtonElement | null>(null);
+const isOpen = ref(false);
+const hasConsented = ref(false);
+const command = ref("");
+const messages = ref<AssistantMessage[]>([]);
+const pendingIntent = ref<PartialFormIntent | undefined>();
+const clarificationField = ref<ClarificationField | undefined>();
+let messageId = 0;
 
-// 面板展开/收起状态
-const isOpen = ref<boolean>(false);
-// 首次使用同意状态
-const hasConsented = ref<boolean>(false);
-// 自定义偏好指令内容
-const customPrompt = ref<string>("");
-// 本地前置校验错误信息
-const localValidationError = ref<string>("");
-
-/**
- * 衍生状态：是否展示首次同意条款视图
- */
-const showConsentView = computed(() => !hasConsented.value);
-
-/**
- * 衍生状态：是否正在运行 Agent 任务
- */
-const isRunning = computed(() => status.value === "running");
-
-/**
- * 衍生状态：是否正在加载 Agent 脚本
- */
-const isLoading = computed(() => status.value === "loading");
-
-/**
- * 衍生状态：控件是否处于禁用锁定状态（运行中或加载中）
- */
-const isControlsDisabled = computed(
-  () => status.value === "running" || status.value === "loading"
+const isRunning = computed(
+  () => status.value === "running" || status.value === "loading",
 );
-
-/**
- * 衍生状态：执行按钮是否不可点击
- */
-const isExecuteDisabled = computed(
-  () =>
-    !customPrompt.value.trim() ||
-    status.value === "loading" ||
-    status.value === "running"
+const showPresets = computed(
+  () => messages.value.length <= 1 && !pendingIntent.value && !isRunning.value,
 );
-
-/**
- * 衍生状态：字符计数是否触达上限
- */
-const isCharLimitReached = computed(
-  () => customPrompt.value.length >= MAX_PROMPT_LENGTH
-);
-
-/**
- * 衍生状态：是否存在前置校验错误
- */
-const hasValidationError = computed(() => !!localValidationError.value);
-
-/**
- * 衍生状态：是否存在错误信息
- */
-const hasErrorMessage = computed(
-  () => !!errorMessage.value || !!localValidationError.value
-);
-
-/**
- * 衍生状态：无障碍角色标注，出现错误时使用 alert
- */
-const statusAriaRole = computed(() =>
-  status.value === "error" || hasValidationError.value ? "alert" : "status"
-);
-
-/**
- * 衍生状态：状态容器的样式类名
- */
-const statusContainerClass = computed(() => {
-  if (status.value === "error" || localValidationError.value) {
-    return "is-state-error";
-  }
-  if (status.value === "running") {
-    return "is-state-running";
-  }
-  if (status.value === "loading") {
-    return "is-state-loading";
-  }
-  if (status.value === "completed") {
-    return "is-state-completed";
-  }
-  if (status.value === "stopped") {
-    return "is-state-stopped";
-  }
-  return "is-state-idle";
-});
-
-/**
- * 衍生状态：预设指令列表
- */
 const presetCommands = computed(() => [
-  t("agent.presets.preset1"),
-  t("agent.presets.preset2"),
-  t("agent.presets.preset3"),
+  String(t("agent.presets.preset1")),
+  String(t("agent.presets.preset2")),
+  String(t("agent.presets.preset3")),
 ]);
-
-/**
- * 衍生状态：当前运行状态核心提示文本
- */
-const currentStatusText = computed(() => {
-  if (localValidationError.value || status.value === "error") {
-    return t("agent.status.error");
+const composerPlaceholder = computed(() =>
+  clarificationField.value
+    ? String(t(`agent.clarification.${clarificationField.value}`))
+    : String(t("agent.custom.placeholder")),
+);
+const runtimeStatusText = computed(() => {
+  if (status.value === "running") {
+    return String(t(`agent.activity.${activityState.value}`));
   }
-  switch (status.value) {
-    case "loading":
-      return t("agent.status.loading");
-    case "running":
-      return t("agent.status.running");
-    case "completed":
-      return t("agent.status.completed");
-    case "stopped":
-      return t("agent.status.stopped");
-    case "idle":
-    default:
-      return t("agent.status.idle");
-  }
+  return String(t(`agent.status.${status.value}`));
 });
+const orbStateClass = computed(() => ({
+  "is-open": isOpen.value,
+  "is-loading": status.value === "loading",
+  "is-running": status.value === "running",
+  "is-completed": status.value === "completed",
+  "is-error": status.value === "error",
+  "is-stopped": status.value === "stopped",
+}));
 
-/**
- * 衍生状态：映射国际化错误详情
- */
-const formattedErrorMessage = computed(() => {
-  if (localValidationError.value) {
-    return localValidationError.value;
-  }
-  if (!errorMessage.value) {
-    return "";
-  }
-  // 尝试在多语言词条中匹配错误代码
-  const errKey = `agent.errors.${errorMessage.value}`;
-  const translated = t(errKey);
-  return translated !== errKey ? translated : errorMessage.value;
-});
+const appendMessage = (
+  role: AssistantMessage["role"],
+  kind: AssistantMessage["kind"],
+  content: string,
+) => {
+  messages.value.push({ id: ++messageId, role, kind, content });
+  nextTick(() => {
+    if (messagesRef.value) {
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+    }
+    refreshPanelPosition();
+  });
+};
 
-/**
- * 切换面板显隐状态
- * 若已同意且打开面板，主动预加载 CDN 运行时并移动焦点
- */
+const initializeConversation = () => {
+  if (messages.value.length === 0) {
+    appendMessage("assistant", "text", String(t("agent.chat.welcome")));
+  }
+};
+
 const togglePanel = () => {
   isOpen.value = !isOpen.value;
   if (isOpen.value) {
-    if (hasConsented.value) {
-      load(locale.value).catch(() => {
-        // 捕获预加载异常，已由 composable 维护 error 状态
-      });
-    }
+    if (hasConsented.value) initializeConversation();
+    refreshPanelPosition();
     nextTick(() => {
-      if (!showConsentView.value) {
-        customTextareaRef.value?.focus();
-      } else {
-        panelRef.value?.focus();
-      }
-    });
-  } else {
-    nextTick(() => {
-      floatBtnRef.value?.focus();
+      if (hasConsented.value) inputRef.value?.focus();
+      else consentButtonRef.value?.focus();
     });
   }
 };
 
-/**
- * 关闭演示面板并将焦点归还浮动入口
- */
-const closePanel = () => {
-  isOpen.value = false;
-  nextTick(() => {
-    floatBtnRef.value?.focus();
-  });
+// Pointer activation is handled by the drag threshold; native keyboard and
+// assistive-technology clicks have no pointer click count.
+const onOrbClick = (event: MouseEvent) => {
+  if (event.detail === 0) togglePanel();
 };
 
-/**
- * 同意使用条款：持久化存储并开始预加载运行时，自动将焦点移动至输入区
- */
-const handleAgreeConsent = () => {
+const {
+  isDragging,
+  isPageHidden,
+  panelPlacement,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  refreshPanelPosition,
+} = useDraggableAgentOrb(
+  orbRef,
+  panelRef,
+  trailLayerRef,
+  isOpen,
+  togglePanel,
+);
+
+const closePanel = () => {
+  isOpen.value = false;
+  nextTick(() => orbRef.value?.focus());
+};
+
+const agreeConsent = () => {
+  hasConsented.value = true;
   try {
     localStorage.setItem(CONSENT_STORAGE_KEY, CONSENT_VERSION);
   } catch {
-    // 兼容可能被禁用的 localStorage 环境
+    // Consent still applies for the current session.
   }
-  hasConsented.value = true;
+  initializeConversation();
   load(locale.value).catch(() => {
-    // 捕获加载异常
+    // Execution has a local fallback if the demo service is unavailable.
   });
-  nextTick(() => {
-    customTextareaRef.value?.focus();
+  nextTick(() => inputRef.value?.focus());
+};
+
+const getConflictMessage = (codes: string[]): string => {
+  const code = codes[0] || "UNKNOWN_COMMAND";
+  return String(t(`agent.conflicts.${code}`));
+};
+
+const getClarificationQuestion = (field: ClarificationField): string =>
+  String(t(`agent.clarification.${field}`));
+
+const formatIntentSummary = (intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>): string => {
+  const plan = String(t(`items.plans.${intent.plan}.name`));
+  const cycle = String(t(`common.period.${intent.billingCycle}`));
+  const addons = intent.addonIds.length
+    ? intent.addonIds
+        .map((id) => String(t(`items.addons.${id}.title`)))
+        .join(String(t("agent.chat.listSeparator")))
+    : String(t("form.summary.noAddons"));
+  return String(
+    t("agent.chat.confirmed", {
+      name: intent.personalInfo.name,
+      plan,
+      cycle,
+      addons,
+    }),
+  );
+};
+
+const runIntent = async (
+  intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
+) => {
+  appendMessage("assistant", "activity", formatIntentSummary(intent));
+  pendingIntent.value = undefined;
+  clarificationField.value = undefined;
+  const result = await execute(intent, locale.value);
+  if (result.success && result.repaired) {
+    appendMessage("system", "warning", String(t("agent.chat.repaired")));
+  } else if (result.success) {
+    appendMessage("assistant", "success", String(t("agent.chat.completed")));
+  } else if (result.message !== "AGENT_STOPPED") {
+    appendMessage("assistant", "error", String(t("agent.chat.failed")));
+  }
+};
+
+const submitCommand = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed || isRunning.value) return;
+  appendMessage("user", "text", trimmed);
+  command.value = "";
+
+  const result = parseFormCommand(trimmed, {
+    baseIntent: pendingIntent.value,
+    existingPersonalInfo: store.personalInfo,
+    focusField: clarificationField.value,
   });
-};
 
-/**
- * 拒绝使用条款：直接关闭面板，不加载 CDN，不产生网络请求
- */
-const handleDeclineConsent = () => {
-  closePanel();
-};
-
-/**
- * 校验输入内容，防止敏感信息上传
- */
-const validateInput = (input: string): boolean => {
-  const trimmed = input.trim();
-  localValidationError.value = "";
-
-  if (trimmed.length < 1) {
-    return false;
+  pendingIntent.value = result.intent;
+  if (result.status === "invalid") {
+    appendMessage("assistant", "error", getConflictMessage(result.conflictCodes));
   }
 
-  // 邮箱格式拦截
-  const emailRegex = /[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/;
-  if (emailRegex.test(trimmed)) {
-    localValidationError.value = t(
-      "agent.errors.AGENT_ERROR_SENSITIVE_EMAIL"
-    );
-    return false;
-  }
-
-  // 连续 7 位数字（疑似手机号/联系方式）拦截
-  const phoneRegex = /\d{7,}/;
-  if (phoneRegex.test(trimmed)) {
-    localValidationError.value = t(
-      "agent.errors.AGENT_ERROR_SENSITIVE_PHONE"
-    );
-    return false;
-  }
-
-  return true;
-};
-
-/**
- * 点击快速预设指令：填充输入框并直接触发执行
- */
-const handleSelectPreset = (preset: string) => {
-  customPrompt.value = preset;
-  localValidationError.value = "";
-  execute(preset, locale.value);
-};
-
-/**
- * 执行用户自定义指令
- */
-const handleExecuteCustom = () => {
-  const trimmed = customPrompt.value.trim();
-  if (!trimmed || isControlsDisabled.value) {
+  const completeIntent = toCompleteFormIntent(result);
+  if (completeIntent) {
+    runIntent(completeIntent);
     return;
   }
-  if (!validateInput(trimmed)) {
-    return;
+
+  const conflictField = result.conflictCodes.includes("MULTIPLE_PLANS")
+    ? "plan"
+    : result.conflictCodes.includes("MULTIPLE_BILLING_CYCLES")
+      ? "billingCycle"
+      : result.conflictCodes.includes("INVALID_EMAIL")
+        ? "email"
+        : result.conflictCodes.includes("INVALID_PHONE")
+          ? "phone"
+          : undefined;
+  const nextField = conflictField || result.missingFields[0];
+  if (nextField) {
+    clarificationField.value = nextField;
+    appendMessage("assistant", "question", getClarificationQuestion(nextField));
   }
-  execute(trimmed, locale.value);
 };
 
-/**
- * 中止当前任务
- */
-const handleStop = () => {
-  stop();
+const submitCurrentCommand = () => submitCommand(command.value);
+
+const handleStop = async () => {
+  await stop();
+  appendMessage("system", "warning", String(t("agent.chat.stopped")));
 };
 
-/**
- * 监听全局键盘事件：Esc 键可关闭面板（任务运行中 Esc 仅关闭面板不中止任务）
- */
 const handleKeyDown = (event: KeyboardEvent) => {
-  if (event.key === "Escape" && isOpen.value) {
-    closePanel();
-  }
+  if (event.key === "Escape" && isOpen.value) closePanel();
 };
 
-// 用户修改自定义输入时，自动重置前置校验提示
-watch(customPrompt, () => {
-  if (localValidationError.value) {
-    localValidationError.value = "";
+watch(isOpen, (open) => {
+  if (open) refreshPanelPosition();
+});
+
+watch(activity, (next, previous) => {
+  if (!next || next === previous || !isOpen.value) return;
+  if (next.type === "retrying") {
+    appendMessage("system", "activity", String(t("agent.activity.retrying")));
   }
 });
 
-// 监听语言切换：若已同意且面板已打开，协同切换运行时语言
-watch(locale, (newLocale) => {
-  if (hasConsented.value && isOpen.value && status.value !== "running") {
-    load(newLocale).catch(() => {
-      // 忽略切换中的静默异常
-    });
-  }
+watch(locale, async (nextLocale) => {
+  if (!hasConsented.value) return;
+  if (isRunning.value) await handleStop();
+  await load(nextLocale).catch(() => undefined);
+  refreshPanelPosition();
 });
 
 onMounted(() => {
   try {
-    const stored = localStorage.getItem(CONSENT_STORAGE_KEY);
-    hasConsented.value = stored === CONSENT_VERSION;
+    hasConsented.value =
+      localStorage.getItem(CONSENT_STORAGE_KEY) === CONSENT_VERSION;
   } catch {
     hasConsented.value = false;
   }
@@ -557,599 +433,350 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-.page-agent-wrapper {
+.page-agent-root {
+  --agent-navy: #02295a;
+  --agent-blue: #174a89;
+  --agent-mist: #bde2fd;
+  --agent-paper: #fbfcff;
+  --agent-ink: #163454;
   position: relative;
+  z-index: 2147483000;
+  isolation: isolate;
   font-family: "ubuntu-regular", sans-serif;
-  z-index: 90;
 }
 
-/* ---------------- 浮动入口按钮 ---------------- */
-.agent-float-btn {
+:global(#page-agent-runtime_simulator-mask) {
+  z-index: 2147482500 !important;
+}
+
+.orb-trail-layer {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 18px;
-  background-color: #02295a;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 30px;
-  cursor: pointer;
-  box-shadow: 0 6px 20px rgba(2, 41, 90, 0.25), 0 2px 6px rgba(2, 41, 90, 0.12);
-  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
-  user-select: none;
-  z-index: 90;
-
-  &:hover {
-    background-color: #174a89;
-    box-shadow: 0 8px 24px rgba(2, 41, 90, 0.35);
-    transform: translateY(-2px);
-  }
-
-  &.is-active {
-    background-color: #413eff;
-    border-color: #6865ff;
-  }
-
-  &.is-running {
-    background-color: #534d93;
-  }
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2147482998;
+  contain: strict;
 }
 
-.btn-icon {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #bde2fd;
-}
-
-.btn-label {
-  font-family: "ubuntu-bold", sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.3px;
-}
-
-.pulse-indicator {
-  position: absolute;
-  width: 28px;
-  height: 28px;
+:deep(.orb-smoke-particle) {
+  --particle-x: 0px;
+  --particle-y: 0px;
+  --particle-dx: 0px;
+  --particle-dy: -12px;
+  --particle-duration: 420ms;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background-color: rgba(189, 226, 253, 0.4);
-  animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(189, 226, 253, 0.42), rgba(23, 74, 137, 0));
+  filter: blur(2px);
+  transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.55);
 }
 
-/* ---------------- 移动端半透明背景遮罩 ---------------- */
-.agent-backdrop {
-  display: none;
+:deep(.orb-smoke-particle.is-active) {
+  animation: smoke-trail var(--particle-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@media (max-width: 600px) {
-  .agent-backdrop {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: rgba(2, 41, 90, 0.4);
-    backdrop-filter: blur(2px);
-    z-index: 94;
-  }
-}
-
-/* ---------------- 演示主面板 ---------------- */
-.agent-panel {
+.agent-orb {
   position: fixed;
-  bottom: 80px;
-  right: 24px;
-  width: 360px;
-  max-height: calc(100vh - 100px);
-  background-color: #ffffff;
-  border: 1px solid rgba(83, 77, 147, 0.16);
-  border-radius: 16px;
-  box-shadow: 0 16px 40px rgba(2, 41, 90, 0.18), 0 4px 12px rgba(2, 41, 90, 0.06);
-  overflow-y: auto;
+  top: 0;
+  left: 0;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #eef8ff;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  z-index: 2147483003;
+  will-change: transform;
+  contain: layout;
+  overflow: visible;
+}
+
+.agent-orb:focus-visible {
+  outline: 3px solid rgba(23, 74, 137, 0.35);
+  outline-offset: 4px;
+}
+
+.agent-orb:active,
+.is-dragging .agent-orb {
+  cursor: grabbing;
+}
+
+.orb-core {
+  position: absolute;
+  inset: 7px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agent-orb:hover .orb-core,
+.agent-orb.is-open .orb-core {
+  transform: scale(0.93);
+}
+
+.orb-core svg {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+}
+
+.agent-panel-positioner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: min(370px, calc(100vw - 28px));
+  max-height: min(620px, calc(100dvh - 28px));
+  z-index: 2147483002;
+  pointer-events: auto !important;
+  will-change: transform;
+}
+
+.agent-panel-surface {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-  z-index: 95;
+  max-height: inherit;
+  overflow: hidden;
+  background: rgba(251, 252, 255, 0.96);
+  border: 1px solid rgba(23, 74, 137, 0.14);
+  border-radius: 20px;
+  box-shadow: 0 20px 46px rgba(2, 41, 90, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(18px);
+  transform-origin: right center;
+  animation: panel-gather 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.drawer-handle {
-  display: none;
-}
+.agent-panel-positioner[data-placement="right"] .agent-panel-surface { transform-origin: left center; }
+.agent-panel-positioner[data-placement="top"] .agent-panel-surface { transform-origin: center bottom; }
+.agent-panel-positioner[data-placement="bottom"] .agent-panel-surface { transform-origin: center top; }
 
-/* 面板头部 */
 .panel-header {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid rgba(83, 77, 147, 0.08);
+  align-items: flex-start;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid rgba(23, 74, 137, 0.09);
 }
 
-.panel-title {
+.panel-eyebrow {
+  margin: 0 0 3px;
+  color: #63798e;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.panel-header h2 {
   margin: 0;
+  color: var(--agent-navy);
   font-family: "ubuntu-bold", sans-serif;
   font-size: 17px;
-  color: #02295a;
 }
 
-.panel-subtitle {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: #95969b;
-  line-height: 1.4;
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  color: #95969b;
-  padding: 6px;
-  margin-top: -2px;
-  margin-right: -4px;
-  cursor: pointer;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-
-  &:hover {
-    color: #02295a;
-    background-color: rgba(83, 77, 147, 0.08);
-  }
-}
-
-/* 面板内容容器 */
-.panel-body {
-  padding: 16px 20px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* ---------------- 同意条款卡片 ---------------- */
-.consent-card {
-  background-color: #f8f9fe;
-  border: 1px solid rgba(83, 77, 147, 0.12);
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-
-.consent-title {
-  margin: 0 0 6px;
-  font-family: "ubuntu-bold", sans-serif;
-  font-size: 14px;
-  color: #02295a;
-}
-
-.consent-intro {
-  margin: 0 0 10px;
-  font-size: 12px;
-  color: #534d93;
-  line-height: 1.4;
-}
-
-.consent-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12px;
-  color: #1a365b;
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-
-  li {
-    list-style: disc;
-  }
-}
-
-.consent-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* ---------------- 指令交互区域 ---------------- */
-.section-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.section-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.section-title {
-  margin: 0;
-  font-family: "ubuntu-bold", sans-serif;
-  font-size: 13px;
-  color: #1a365b;
-}
-
-.char-counter {
-  font-size: 11px;
-  color: #95969b;
-
-  &.is-limit {
-    color: #ee5454;
-    font-family: "ubuntu-bold", sans-serif;
-  }
-}
-
-.presets-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.preset-item-btn {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 9px 12px;
-  background-color: #f8f9fe;
-  border: 1px solid rgba(83, 77, 147, 0.12);
-  border-radius: 8px;
-  color: #1a365b;
-  font-size: 12.5px;
-  line-height: 1.4;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover:not(:disabled) {
-    background-color: #eef5ff;
-    border-color: #413eff;
-    color: #413eff;
-    transform: translateX(2px);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-}
-
-.preset-index {
-  font-family: "ubuntu-bold", sans-serif;
-  font-size: 11px;
-  color: #534d93;
-  margin-top: 1px;
-}
-
-.preset-text {
-  flex: 1;
-}
-
-/* 输入框 */
-.input-wrapper {
-  position: relative;
-}
-
-.custom-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 12px;
-  border: 1px solid #d9d9db;
-  border-radius: 8px;
-  font-family: "ubuntu-regular", sans-serif;
-  font-size: 13px;
-  color: #1a365b;
-  background-color: #ffffff;
-  resize: vertical;
-  min-height: 64px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-
-  &:focus {
-    outline: none;
-    border-color: #534d93;
-    box-shadow: 0 0 0 3px rgba(83, 77, 147, 0.12);
-  }
-
-  &::placeholder {
-    color: #95969b;
-    font-size: 12px;
-  }
-
-  &:disabled {
-    background-color: #f8f9fe;
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-
-  &.has-error {
-    border-color: #ee5454;
-  }
-}
-
-/* 操作按钮 */
-.actions-block {
-  display: flex;
-  flex-direction: column;
-}
-
-.primary-action-btn,
-.secondary-action-btn,
-.stop-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 11px 16px;
-  border-radius: 8px;
-  font-family: "ubuntu-bold", sans-serif;
-  font-size: 13.5px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.primary-action-btn {
-  background-color: #02295a;
-  color: #ffffff;
-  border: 1px solid #02295a;
-
-  &:hover:not(:disabled) {
-    background-color: #174a89;
-    border-color: #174a89;
-  }
-
-  &:disabled {
-    background-color: #d9d9db;
-    border-color: #d9d9db;
-    color: #95969b;
-    cursor: not-allowed;
-  }
-}
-
-.secondary-action-btn {
-  background-color: #ffffff;
-  color: #95969b;
-  border: 1px solid #d9d9db;
-
-  &:hover {
-    color: #02295a;
-    border-color: #02295a;
-    background-color: #f8f9fe;
-  }
-}
-
-.stop-action-btn {
-  background-color: #ee5454;
-  color: #ffffff;
-  border: 1px solid #ee5454;
-
-  &:hover {
-    background-color: #d93d3d;
-    border-color: #d93d3d;
-  }
-}
-
-.btn-svg-icon {
-  display: inline-block;
-}
-
-.spinner-icon {
-  width: 14px;
-  height: 14px;
-  animation: spin 1s linear infinite;
-}
-
-/* ---------------- 状态提示区域 ---------------- */
-.status-container {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.4;
-  background-color: #f8f9fe;
-  border: 1px solid rgba(83, 77, 147, 0.12);
-  transition: all 0.2s ease;
-
-  &.is-state-idle {
-    color: #534d93;
-    .status-indicator-dot {
-      background-color: #534d93;
-    }
-  }
-
-  &.is-state-loading {
-    color: #174a89;
-    background-color: #eef5ff;
-    border-color: rgba(23, 74, 137, 0.2);
-    .status-indicator-dot {
-      background-color: #174a89;
-      animation: pulse-dot 1s infinite alternate;
-    }
-  }
-
-  &.is-state-running {
-    color: #413eff;
-    background-color: #f0f0ff;
-    border-color: rgba(65, 62, 255, 0.25);
-    .status-indicator-dot {
-      background-color: #413eff;
-      animation: pulse-dot 0.8s infinite alternate;
-    }
-  }
-
-  &.is-state-completed {
-    color: #0d9488;
-    background-color: #f0fdfa;
-    border-color: rgba(13, 148, 136, 0.25);
-    .status-indicator-dot {
-      background-color: #0d9488;
-    }
-  }
-
-  &.is-state-stopped {
-    color: #95969b;
-    background-color: #f8f9fe;
-    .status-indicator-dot {
-      background-color: #95969b;
-    }
-  }
-
-  &.is-state-error {
-    color: #ee5454;
-    background-color: #fef2f2;
-    border-color: rgba(238, 84, 84, 0.25);
-    .status-indicator-dot {
-      background-color: #ee5454;
-    }
-  }
-}
-
-.status-indicator-dot {
-  width: 8px;
-  height: 8px;
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
-  margin-top: 4px;
-  flex-shrink: 0;
+  color: #63798e;
+  background: transparent;
+  cursor: pointer;
 }
 
-.status-content {
-  flex: 1;
+.icon-button:hover { background: rgba(23, 74, 137, 0.08); color: var(--agent-navy); }
+.icon-button svg { width: 18px; height: 18px; }
+
+.consent-view {
+  padding: 20px;
+  overflow-y: auto;
+  color: var(--agent-ink);
 }
 
-.status-text {
+.consent-intro { margin: 0 0 12px; font-size: 14px; line-height: 1.55; }
+.consent-view ul {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
   margin: 0;
-  font-family: "ubuntu-medium", sans-serif;
+  padding-left: 20px;
+  color: #587087;
+  font-size: 12px;
+  line-height: 1.55;
+  list-style: disc;
+}
+.consent-view li { display: list-item; width: auto; }
+.consent-view li + li { margin-top: 0; }
+.consent-actions { display: grid; gap: 8px; margin-top: 20px; }
+
+.primary-button,
+.send-button {
+  border: 0;
+  color: #fff;
+  background: var(--agent-navy);
+  cursor: pointer;
 }
 
-.error-detail-text {
-  margin: 4px 0 0;
-  font-size: 11.5px;
-  color: #ee5454;
+.primary-button {
+  min-height: 42px;
+  border-radius: 12px;
+  font-family: "ubuntu-bold", sans-serif;
 }
 
-/* 底部声明 */
-.panel-footer-notice {
+.text-button {
+  min-height: 36px;
+  border: 0;
+  color: #63798e;
+  background: transparent;
+  cursor: pointer;
+}
+
+.messages {
+  flex: 1 1 210px;
+  min-height: 0;
+  max-height: 345px;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.message p {
+  max-width: 88%;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 13px 13px 13px 4px;
+  color: var(--agent-ink);
+  background: #edf3f8;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.message-mark {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: 12px;
+  border-radius: 50%;
+  background: var(--agent-blue);
+}
+
+.message.is-user { justify-content: flex-end; }
+.message.is-user p {
+  color: #fff;
+  background: var(--agent-navy);
+  border-radius: 13px 13px 4px 13px;
+}
+.message.is-warning p { background: #f4eee1; color: #69542b; }
+.message.is-error p { background: #f7e9ea; color: #813f45; }
+.message.is-success p { background: #e9f2ed; color: #356a51; }
+.message.is-activity p { border: 1px solid rgba(23, 74, 137, 0.12); background: transparent; }
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-left: 15px;
+}
+
+.preset-chips button {
+  padding: 7px 9px;
+  border: 1px solid rgba(23, 74, 137, 0.18);
+  border-radius: 999px;
+  color: var(--agent-blue);
+  background: #fff;
   font-size: 11px;
-  color: #95969b;
-  line-height: 1.4;
-  border-top: 1px dashed rgba(83, 77, 147, 0.15);
-  padding-top: 10px;
+  cursor: pointer;
+}
+.preset-chips button:hover { background: #edf3f8; }
 
-  p {
-    margin: 0;
-  }
+.runtime-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 16px;
+  color: #63798e;
+  background: rgba(237, 243, 248, 0.72);
+  border-top: 1px solid rgba(23, 74, 137, 0.07);
+  border-bottom: 1px solid rgba(23, 74, 137, 0.07);
+  font-size: 11.5px;
 }
 
-/* ---------------- 动画过渡 ---------------- */
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+.runtime-dot { width: 7px; height: 7px; border-radius: 50%; background: #7c91a3; }
+.runtime-status.is-running .runtime-dot,
+.runtime-status.is-loading .runtime-dot { background: var(--agent-blue); animation: status-breathe 1.2s ease-in-out infinite; }
+.runtime-status.is-completed .runtime-dot { background: #639378; }
+.runtime-status.is-error .runtime-dot { background: #a9565d; }
+.runtime-status button { margin-left: auto; border: 0; color: #813f45; background: transparent; cursor: pointer; font-size: 11.5px; }
 
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.8);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
+.composer { padding: 12px 14px 14px; }
+.composer > label { display: block; margin-bottom: 6px; color: var(--agent-ink); font-family: "ubuntu-medium", sans-serif; font-size: 11.5px; }
+.composer-row { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: end; gap: 8px; }
+.composer textarea {
+  min-height: 50px;
+  max-height: 100px;
+  padding: 10px 11px;
+  resize: vertical;
+  border: 1px solid rgba(23, 74, 137, 0.18);
+  border-radius: 12px;
+  outline: none;
+  color: var(--agent-ink);
+  background: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-sizing: border-box;
 }
+.composer textarea:focus { border-color: var(--agent-blue); box-shadow: 0 0 0 3px rgba(23, 74, 137, 0.09); }
+.send-button { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; }
+.send-button:active { transform: scale(0.96); }
+.send-button:disabled { cursor: not-allowed; opacity: 0.4; }
+.send-button svg { width: 19px; height: 19px; }
+.privacy-note { margin: 7px 2px 0; color: #7c91a3; font-size: 10.5px; line-height: 1.4; }
 
-@keyframes pulse-dot {
-  0% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 1;
-  }
+.is-page-hidden *,
+.is-page-hidden *::before,
+.is-page-hidden *::after { animation-play-state: paused !important; }
+
+@keyframes smoke-trail {
+  0% { opacity: 0.5; transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.65); }
+  100% { opacity: 0; transform: translate3d(calc(var(--particle-x) + var(--particle-dx)), calc(var(--particle-y) + var(--particle-dy)), 0) scale(1.45); }
 }
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.25s ease;
+@keyframes panel-gather {
+  from { opacity: 0; transform: scale(0.88); filter: blur(6px); }
+  to { opacity: 1; transform: scale(1); filter: blur(0); }
 }
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.slide-panel-enter-active,
-.slide-panel-leave-active {
-  transition: opacity 0.25s ease,
-    transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.slide-panel-enter-from,
-.slide-panel-leave-to {
-  opacity: 0;
-  transform: translateY(12px) scale(0.98);
-}
-
-/* ---------------- 移动端响应式适配 ---------------- */
-@media (max-width: 971px) {
-  .agent-float-btn {
-    bottom: 86px;
-    right: 16px;
-    padding: 8px 14px;
-  }
-
-  .agent-panel {
-    bottom: 140px;
-    right: 16px;
-  }
-}
+@keyframes status-breathe { 50% { transform: scale(1.35); opacity: 0.45; } }
 
 @media (max-width: 600px) {
-  .agent-panel {
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    max-height: 70vh;
-    border-radius: 16px 16px 0 0;
-    border-bottom: none;
-    box-shadow: 0 -8px 24px rgba(2, 41, 90, 0.15);
-  }
-
-  .drawer-handle {
-    display: block;
-    width: 36px;
-    height: 4px;
-    background-color: #d9d9db;
-    border-radius: 2px;
-    margin: 8px auto 0;
-  }
-
-  .slide-panel-enter-from,
-  .slide-panel-leave-to {
-    transform: translateY(100%);
-  }
+  .agent-panel-positioner { width: calc(100vw - 28px); max-height: calc(100dvh - 28px); }
+  .messages { max-height: min(330px, 42dvh); }
 }
 
-/* 减弱动画模式适配 */
 @media (prefers-reduced-motion: reduce) {
-  .agent-float-btn,
-  .agent-panel,
-  .slide-panel-enter-active,
-  .slide-panel-leave-active,
-  .fade-enter-active,
-  .fade-leave-active {
-    transition: none !important;
-    animation: none !important;
-  }
+  .runtime-dot,
+  :deep(.orb-smoke-particle) { animation: none !important; }
+  .agent-panel-surface { animation: none; }
 }
 </style>

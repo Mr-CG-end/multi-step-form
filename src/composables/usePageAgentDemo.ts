@@ -1,351 +1,414 @@
-import { ref, readonly } from 'vue';
-import { useCommonsStore } from '@/stores/commons';
+import { readonly, ref } from "vue";
+import { useCommonsStore } from "@/stores/commons";
 import type {
-  PageAgentDemoStatus,
-  IPageAgentDemoResult,
+  AgentActivityState,
+  CommonsSnapshot,
+  FormIntent,
+} from "@/types/form-assistant";
+import type {
+  IPageAgentActivity,
   IPageAgentDemoControls,
-} from '@/types/page-agent';
+  IPageAgentDemoResult,
+  IPageAgentInstance,
+  PageAgentDemoStatus,
+} from "@/types/page-agent";
 
-// Page Agent 官方 Demo 运行时的固定 CDN 地址
 const CDN_BASE_URL =
-  'https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js';
-// 固定的 DOM 节点 ID，用于防重复注入与单例清理
-const SCRIPT_ID = 'page-agent-demo-script';
-// CDN 脚本注入后等待 window.pageAgent 实例就绪的最大超时时间（10秒）
+  "https://cdn.jsdelivr.net/npm/page-agent@1.12.2/dist/iife/page-agent.demo.js";
+const DEMO_MODEL = "qwen3.5-plus";
+const DEMO_BASE_URL =
+  "https://page-ag-testing-ohftxirgbn.cn-shanghai.fcapp.run";
+const DEMO_API_KEY = "NA";
+const SCRIPT_ID = "page-agent-demo-script";
+const OFFICIAL_PANEL_ID = "page-agent-runtime_agent-panel";
 const LOAD_TIMEOUT_MS = 10000;
-// 轮询检查 window.pageAgent 挂载状态的间隔时间
-const POLL_INTERVAL_MS = 100;
 
-// 模块级单例响应式状态，确保跨组件调用时状态严格一致
-const status = ref<PageAgentDemoStatus>('idle');
-const errorMessage = ref<string>('');
+const status = ref<PageAgentDemoStatus>("idle");
+const errorMessage = ref("");
+const activityState = ref<AgentActivityState>("idle");
+const activity = ref<IPageAgentActivity | null>(null);
 
-// 内部单例变量，记录当前已注入脚本的语言及加载中的 Promise
-let loadedLocale = '';
+let loadedLocale = "";
 let loadPromise: Promise<void> | null = null;
+let activeSnapshot: CommonsSnapshot | null = null;
+let activeIntent: FormIntent | null = null;
+let currentAgent: IPageAgentInstance | null = null;
+let executionVersion = 0;
+let runtimeVersion = 0;
+let cancelScriptLoad: (() => void) | null = null;
 
-/**
- * 语言代码映射：
- * 将应用内的国际化代码映射为 Page Agent 支持的语言参数
- * en -> en-US, zh-CN -> zh-CN, zh-TW -> zh-CN
- */
-function mapLocaleToAgentLang(locale: string): string {
-  if (locale === 'en') {
-    return 'en-US';
-  }
-  if (locale === 'zh-CN' || locale === 'zh-TW') {
-    return 'zh-CN';
-  }
-  return locale.startsWith('en') ? 'en-US' : 'zh-CN';
+const planNames = {
+  "zh-CN": { "1": "基础版", "2": "高级版", "3": "专业版" },
+  "zh-TW": { "1": "基礎版", "2": "高級版", "3": "專業版" },
+  en: { "1": "Arcade", "2": "Advanced", "3": "Pro" },
+} as const;
+
+const addonNames = {
+  "zh-CN": {
+    "1": "在线服务",
+    "2": "更大存储空间",
+    "3": "自定义个人资料",
+  },
+  "zh-TW": {
+    "1": "線上服務",
+    "2": "更大儲存空間",
+    "3": "自訂個人檔案",
+  },
+  en: {
+    "1": "Online service",
+    "2": "Larger storage",
+    "3": "Customizable profile",
+  },
+} as const;
+
+function mapLocaleToAgentLang(locale: string): "zh-CN" | "en-US" {
+  return locale.startsWith("en") ? "en-US" : "zh-CN";
 }
 
-/**
- * 用户输入偏好验证结果接口
- */
-interface IPreferenceValidationResult {
-  valid: boolean;
-  errorCode?: string;
+function normalizeLocale(locale: string): keyof typeof planNames {
+  if (locale === "zh-TW") return "zh-TW";
+  return locale.startsWith("en") ? "en" : "zh-CN";
 }
 
-/**
- * 校验用户输入的套餐偏好文本
- * 约束：
- * 1. 必须在 1~300 字符以内；
- * 2. 严禁包含真实邮箱特征，防止敏感信息上传；
- * 3. 严禁包含连续 7 位以上数字（疑似手机号/身份证等敏感信息）。
- */
-function validatePreference(preference: string): IPreferenceValidationResult {
-  const trimmed = preference.trim();
-
-  // 长度边界校验
-  if (trimmed.length < 1 || trimmed.length > 300) {
-    return { valid: false, errorCode: 'AGENT_ERROR_INVALID_PREFERENCE_LENGTH' };
-  }
-
-  // 邮箱特征校验：匹配常见邮箱格式
-  const emailRegex = /[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/;
-  if (emailRegex.test(trimmed)) {
-    return { valid: false, errorCode: 'AGENT_ERROR_SENSITIVE_EMAIL' };
-  }
-
-  // 连续 7 位及以上数字校验：防止输入真实手机号等隐私
-  const phoneRegex = /\d{7,}/;
-  if (phoneRegex.test(trimmed)) {
-    return { valid: false, errorCode: 'AGENT_ERROR_SENSITIVE_PHONE' };
-  }
-
-  return { valid: true };
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * 拼装安全且具备固定约束的 Agent 任务 Prompt
- * 注入固定演示身份与“第4步汇总页停止”的硬性流程约束
- */
-function buildTaskPrompt(preference: string): string {
-  return [
-    '这是一个技术演示，只能使用以下虚构资料：',
-    '姓名：演示用户',
-    '邮箱：demo@example.com',
-    '手机号：13800000000',
-    '',
-    '按页面正常顺序完成个人资料、套餐和附加服务选择。',
-    '到达第 4 步汇总页后停止，不要点击最终确认按钮。',
-    `用户的套餐偏好：${preference.trim()}`,
-  ].join('\n');
+function redactPageContent(content: string): string {
+  const store = useCommonsStore();
+  let sanitized = content;
+  for (const value of [
+    store.personalInfo.name,
+    store.personalInfo.email,
+    store.personalInfo.phone,
+  ]) {
+    const trimmed = value.trim();
+    if (trimmed) {
+      sanitized = sanitized.replace(
+        new RegExp(escapeRegExp(trimmed), "gi"),
+        "[LOCAL_DATA]",
+      );
+    }
+  }
+  return sanitized
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[LOCAL_EMAIL]")
+    .replace(/1[3-9](?:[\s-]?\d){9}/g, "[LOCAL_PHONE]");
 }
 
-/**
- * 轮询等待 window.pageAgent 挂载就绪
- * Page Agent Demo Bundle 在 script.onload 后会在异步定时回调中创建 window.pageAgent
- */
-function waitForAgentReady(timeoutMs: number): Promise<void> {
+function removeOfficialPanel(): void {
+  document.getElementById(OFFICIAL_PANEL_ID)?.remove();
+}
+
+function waitForConstructor(timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-
-    const checkInterval = setInterval(() => {
-      // 检查全局实例及其核心执行方法是否已就绪
-      if (window.pageAgent && typeof window.pageAgent.execute === 'function') {
-        clearInterval(checkInterval);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      if (window.PageAgent) {
+        window.clearInterval(timer);
         resolve();
-        return;
+      } else if (Date.now() - startedAt >= timeoutMs) {
+        window.clearInterval(timer);
+        reject(new Error("AGENT_LOAD_TIMEOUT"));
       }
-
-      if (Date.now() - startTime >= timeoutMs) {
-        clearInterval(checkInterval);
-        reject(new Error('AGENT_LOAD_TIMEOUT'));
-      }
-    }, POLL_INTERVAL_MS);
+    }, 80);
   });
 }
 
-/**
- * 加载 Page Agent CDN 脚本与初始化实例
- * @param locale 页面语言
- */
+function mapActivityState(detail: IPageAgentActivity): AgentActivityState {
+  if (detail.type === "thinking") return "thinking";
+  if (detail.type === "retrying") return "retrying";
+  if (detail.type === "error") return "error";
+  return "executing";
+}
+
+const handleAgentStatus: EventListener = () => {
+  if (status.value === "stopped") return;
+  if (currentAgent?.status === "running") status.value = "running";
+  if (currentAgent?.status === "stopped") status.value = "stopped";
+  if (currentAgent?.status === "error") status.value = "error";
+  removeOfficialPanel();
+};
+
+const handleAgentActivity: EventListener = (event) => {
+  const detail = (event as CustomEvent<IPageAgentActivity>).detail;
+  activity.value = detail;
+  activityState.value = mapActivityState(detail);
+  removeOfficialPanel();
+};
+
+function detachAgentListeners(agent: IPageAgentInstance): void {
+  agent.removeEventListener("statuschange", handleAgentStatus);
+  agent.removeEventListener("activity", handleAgentActivity);
+}
+
+function disposeInstance(): void {
+  if (!currentAgent) return;
+  detachAgentListeners(currentAgent);
+  try {
+    currentAgent.dispose();
+  } catch {
+    // Runtime cleanup must never break the regular form.
+  }
+  currentAgent = null;
+  window.pageAgent = undefined;
+  removeOfficialPanel();
+}
+
+function createHeadlessDemoAgent(targetLang: "zh-CN" | "en-US"): void {
+  if (!window.PageAgent) throw new Error("AGENT_NOT_INITIALIZED");
+  disposeInstance();
+
+  const agent = new window.PageAgent({
+    model: DEMO_MODEL,
+    baseURL: DEMO_BASE_URL,
+    apiKey: DEMO_API_KEY,
+    language: targetLang,
+    promptForNextTask: false,
+    transformPageContent: redactPageContent,
+  });
+
+  // The demo class always creates a Panel. Dispose it before the first status
+  // event can force the official input back onto the page.
+  agent.panel?.dispose();
+  agent.onAskUser = undefined;
+  removeOfficialPanel();
+
+  currentAgent = agent;
+  window.pageAgent = agent;
+  agent.addEventListener("statuschange", handleAgentStatus);
+  agent.addEventListener("activity", handleAgentActivity);
+}
+
 async function load(locale: string): Promise<void> {
   const targetLang = mapLocaleToAgentLang(locale);
-
-  // 运行中不允许热重载或变更语言
-  if (status.value === 'running') {
-    return;
-  }
-
-  // 已加载相同语言且实例健康时直接复用，避免无意义的 DOM 操作
-  if (
-    loadedLocale === targetLang &&
-    window.pageAgent &&
-    status.value !== 'error'
-  ) {
-    return;
-  }
-
-  // 并发防护：若有正在进行中的加载请求，直接返回现有 Promise
+  if (status.value === "running") return;
+  if (loadedLocale === locale && currentAgent) return;
   if (loadPromise) {
-    return loadPromise;
+    await loadPromise;
+    if (loadedLocale !== locale) return load(locale);
+    return;
   }
+  const version = runtimeVersion;
 
-  // 若语言变更，先彻底释放旧实例并清除旧脚本
-  if (loadedLocale && loadedLocale !== targetLang) {
-    dispose();
-  }
-
-  status.value = 'loading';
-  errorMessage.value = '';
+  status.value = "loading";
+  errorMessage.value = "";
 
   loadPromise = (async () => {
     try {
-      // 清理已存在的脚本标签，保证环境干净
-      const existingScript = document.getElementById(SCRIPT_ID);
-      if (existingScript) {
-        existingScript.remove();
+      if (!window.PageAgent) {
+        document.getElementById(SCRIPT_ID)?.remove();
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          const finish = (error?: Error) => {
+            window.clearTimeout(timeout);
+            script.onload = null;
+            script.onerror = null;
+            cancelScriptLoad = null;
+            if (error) {
+              script.remove();
+              reject(error);
+            } else resolve();
+          };
+          const timeout = window.setTimeout(
+            () => finish(new Error("AGENT_LOAD_TIMEOUT")),
+            LOAD_TIMEOUT_MS,
+          );
+          cancelScriptLoad = () => finish(new Error("AGENT_LOAD_CANCELLED"));
+          script.id = SCRIPT_ID;
+          script.src = `${CDN_BASE_URL}?autoInit=false&lang=${targetLang}`;
+          script.async = true;
+          script.crossOrigin = "anonymous";
+          script.onload = () => finish();
+          script.onerror = () => finish(new Error("AGENT_SCRIPT_LOAD_FAILED"));
+          document.head.appendChild(script);
+        });
+        await waitForConstructor(LOAD_TIMEOUT_MS);
       }
 
-      // 创建 script 标签并注入
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement('script');
-        script.id = SCRIPT_ID;
-        // showPanel=false 隐藏官方自带浮窗面板，由应用提供原生演示界面
-        script.src = `${CDN_BASE_URL}?showPanel=false&lang=${targetLang}`;
-        script.async = true;
-
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('AGENT_SCRIPT_LOAD_FAILED'));
-
-        document.head.appendChild(script);
-      });
-
-      // 等待 window.pageAgent 初始化就绪
-      await waitForAgentReady(LOAD_TIMEOUT_MS);
-
-      loadedLocale = targetLang;
-      status.value = 'idle';
-      errorMessage.value = '';
-    } catch (err: unknown) {
-      status.value = 'error';
-      const errCode = err instanceof Error ? err.message : 'AGENT_LOAD_FAILED';
-      errorMessage.value = errCode;
-      throw err;
+      if (version !== runtimeVersion) throw new Error("AGENT_LOAD_CANCELLED");
+      createHeadlessDemoAgent(targetLang);
+      loadedLocale = locale;
+      status.value = "idle";
+      activityState.value = "idle";
+    } catch (error: unknown) {
+      if (version !== runtimeVersion) throw error;
+      status.value = "error";
+      errorMessage.value =
+        error instanceof Error ? error.message : "AGENT_LOAD_FAILED";
+      throw error;
     } finally {
-      loadPromise = null;
+      if (version === runtimeVersion) loadPromise = null;
+      removeOfficialPanel();
     }
   })();
 
   return loadPromise;
 }
 
-/**
- * 组装并执行 Page Agent 演示任务
- * @param preference 用户输入的套餐偏好
- * @param locale 当前页面语言
- */
+function buildTaskPrompt(intent: FormIntent, locale: string): string {
+  const activeLocale = normalizeLocale(locale);
+  const plan = planNames[activeLocale][intent.plan];
+  const cycle =
+    intent.billingCycle === "yearly" ? "yearly / 年付" : "monthly / 月付";
+  const addons = intent.addonIds.map((id) => addonNames[activeLocale][id]);
+  const addonInstruction =
+    addons.length > 0
+      ? addons.join(", ")
+      : "none / 不选择任何附加服务";
+
+  return [
+    "Operate only the subscription form that is already on Step 2.",
+    "Personal information was validated locally. Never navigate back to Step 1 and never edit personal data.",
+    `Select exactly this plan: ${plan}.`,
+    `Select exactly this billing cycle: ${cycle}.`,
+    "Continue to Step 3.",
+    `Make selected add-ons exactly: ${addonInstruction}. Deselect every other add-on.`,
+    "Continue to Step 4 Summary, then stop successfully.",
+    "Never click the final Confirm button.",
+  ].join("\n");
+}
+
+function locallyComplete(intent: FormIntent): void {
+  activityState.value = "repairing";
+  useCommonsStore().applyAssistantIntent(intent);
+}
+
 async function execute(
-  preference: string,
-  locale: string
+  intent: FormIntent,
+  locale: string,
 ): Promise<IPageAgentDemoResult> {
-  // 运行中禁止重复触发任务
-  if (status.value === 'running') {
+  if (activeIntent) {
     return {
       success: false,
-      message: 'AGENT_ALREADY_RUNNING',
+      message: "AGENT_ALREADY_RUNNING",
+      repaired: false,
     };
   }
 
-  errorMessage.value = '';
+  const store = useCommonsStore();
+  const version = ++executionVersion;
+  const stoppedResult: IPageAgentDemoResult = {
+    success: false, message: "AGENT_STOPPED", repaired: false,
+  };
+  activeSnapshot = store.createSnapshot();
+  activeIntent = intent;
+  errorMessage.value = "";
+  activity.value = null;
 
-  // 1. 输入安全与格式校验
-  const validation = validatePreference(preference);
-  if (!validation.valid) {
-    const failMsg = validation.errorCode || 'AGENT_ERROR_INVALID_PREFERENCE';
-    errorMessage.value = failMsg;
-    return {
-      success: false,
-      message: failMsg,
-    };
-  }
-
-  // 2. 确保 Agent 已加载并就绪
   try {
     await load(locale);
-  } catch (err: unknown) {
-    return {
-      success: false,
-      message: errorMessage.value || 'AGENT_LOAD_FAILED',
-    };
+  } catch {
+    if (version !== executionVersion) return stoppedResult;
+    locallyComplete(intent);
+    status.value = "completed";
+    activityState.value = "completed";
+    activeSnapshot = null;
+    activeIntent = null;
+    return { success: true, message: "AGENT_LOCAL_FALLBACK", repaired: true };
   }
 
-  if (!window.pageAgent) {
-    status.value = 'error';
-    errorMessage.value = 'AGENT_NOT_INITIALIZED';
-    return {
-      success: false,
-      message: 'AGENT_NOT_INITIALIZED',
-    };
+  if (version !== executionVersion) return stoppedResult;
+  if (!currentAgent) {
+    locallyComplete(intent);
+    status.value = "completed";
+    activityState.value = "completed";
+    activeSnapshot = null;
+    activeIntent = null;
+    return { success: true, message: "AGENT_LOCAL_FALLBACK", repaired: true };
   }
 
-  // 3. 执行前重置表单状态，防止残留数据污染 Agent 执行上下文
-  const commonsStore = useCommonsStore();
-  commonsStore.clearForm();
-
-  // 4. 拼装安全任务 Prompt 并开始执行
-  const task = buildTaskPrompt(preference);
-  status.value = 'running';
+  store.prepareAssistantRun(intent);
+  status.value = "running";
+  activityState.value = "thinking";
 
   try {
-    const result = await window.pageAgent.execute(task);
+    const result = await currentAgent.execute(buildTaskPrompt(intent, locale));
+    removeOfficialPanel();
 
-    // 检查执行期间是否被用户手动中止
-    if ((status.value as PageAgentDemoStatus) === 'stopped') {
+    if (version !== executionVersion || (status.value as PageAgentDemoStatus) === "stopped") {
+      return { success: false, message: "AGENT_STOPPED", repaired: false };
+    }
+    if (result.success && store.matchesAssistantIntent(intent)) {
+      status.value = "completed";
+      activityState.value = "completed";
+      activeSnapshot = null;
+      activeIntent = null;
       return {
-        success: false,
-        message: 'AGENT_STOPPED',
+        success: true,
+        message: "AGENT_EXECUTION_SUCCESS",
+        repaired: false,
       };
     }
 
-    if (result && result.success === false) {
-      status.value = 'error';
-      errorMessage.value = 'AGENT_EXECUTION_FAILED';
-      return {
-        success: false,
-        message: 'AGENT_EXECUTION_FAILED',
-      };
+    locallyComplete(intent);
+    status.value = "completed";
+    activityState.value = "completed";
+    activeSnapshot = null;
+    activeIntent = null;
+    return { success: true, message: "AGENT_RESULT_REPAIRED", repaired: true };
+  } catch {
+    if (version !== executionVersion || (status.value as PageAgentDemoStatus) === "stopped") {
+      return { success: false, message: "AGENT_STOPPED", repaired: false };
     }
-
-    status.value = 'completed';
-    return {
-      success: true,
-      message: 'AGENT_EXECUTION_SUCCESS',
-    };
-  } catch (err: unknown) {
-    // 若已被 stop() 中止，保持 stopped 状态，不被异常覆盖为 error
-    if ((status.value as PageAgentDemoStatus) === 'stopped') {
-      return {
-        success: false,
-        message: 'AGENT_STOPPED',
-      };
-    }
-
-    status.value = 'error';
-    errorMessage.value = 'AGENT_EXECUTION_ERROR';
-    return {
-      success: false,
-      message: 'AGENT_EXECUTION_ERROR',
-    };
+    locallyComplete(intent);
+    status.value = "completed";
+    activityState.value = "completed";
+    activeSnapshot = null;
+    activeIntent = null;
+    return { success: true, message: "AGENT_RESULT_REPAIRED", repaired: true };
+  } finally {
+    removeOfficialPanel();
   }
 }
 
-/**
- * 停止当前正在执行的 Agent 任务
- */
 async function stop(): Promise<void> {
-  if (status.value !== 'running') {
-    return;
+  if (status.value !== "running" && status.value !== "loading") return;
+  executionVersion += 1;
+  if (status.value === "loading") {
+    runtimeVersion += 1;
+    cancelScriptLoad?.();
+    loadPromise = null;
   }
-
-  // 立即标记为 stopped，防止后续异步返回值覆盖状态
-  status.value = 'stopped';
-
+  status.value = "stopped";
   try {
-    if (window.pageAgent && typeof window.pageAgent.stop === 'function') {
-      await window.pageAgent.stop();
-    }
+    await currentAgent?.stop();
   } catch {
-    // 捕获停止过程中的潜在异常，确保状态稳定
+    // Local transaction restoration still proceeds.
   }
+
+  if (activeSnapshot) useCommonsStore().restoreSnapshot(activeSnapshot);
+  activeSnapshot = null;
+  activeIntent = null;
+  activityState.value = "idle";
+  removeOfficialPanel();
 }
 
-/**
- * 释放 Agent 运行时资源与 DOM 节点
- */
 function dispose(): void {
-  try {
-    if (window.pageAgent && typeof window.pageAgent.dispose === 'function') {
-      window.pageAgent.dispose();
-    }
-  } catch {
-    // 忽略释放过程中的清理异常
+  executionVersion += 1;
+  runtimeVersion += 1;
+  cancelScriptLoad?.();
+  if (activeSnapshot && activeIntent) {
+    useCommonsStore().restoreSnapshot(activeSnapshot);
   }
-
-  // 移除注入的 script 标签
-  const script = document.getElementById(SCRIPT_ID);
-  if (script) {
-    script.remove();
-  }
-
-  // 重置所有单例状态与引用
-  window.pageAgent = undefined;
-  loadedLocale = '';
+  activeSnapshot = null;
+  activeIntent = null;
+  disposeInstance();
+  document.getElementById(SCRIPT_ID)?.remove();
+  window.PageAgent = undefined;
+  loadedLocale = "";
   loadPromise = null;
-  status.value = 'idle';
-  errorMessage.value = '';
+  status.value = "idle";
+  activityState.value = "idle";
+  activity.value = null;
+  errorMessage.value = "";
 }
 
-/**
- * 导出 Page Agent 演示控制 Composable
- */
 export function usePageAgentDemo(): IPageAgentDemoControls {
   return {
     status: readonly(status),
     errorMessage: readonly(errorMessage),
+    activityState: readonly(activityState),
+    activity: readonly(activity),
     load,
     execute,
     stop,
