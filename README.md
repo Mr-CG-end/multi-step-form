@@ -23,17 +23,17 @@ An AI-assisted multi-step subscription form built with Vue 3 and TypeScript. Wit
 
 ### AI 演示说明与推荐指令
 
-点击页面右下角的“AI 演示 / AI 表单演示”按钮展开操作面板。在首次使用时请阅读使用须知并点击“同意并开始演示”，随后可直接选择推荐指令体验自动化操作：
+点击默认位于右侧的液态波浪悬浮球展开自有对话面板；悬浮球可自由拖动并记忆位置。首次使用请阅读说明并点击“同意并开始”。可以一次只发送一项信息（如“我叫陈墨”“邮箱 chenmo@example.com”“年付专业版”），助手会累积信息并追问缺失项。以下套餐指令也可逐条补充：
 
 1. **指令一**：`选择年度专业版，不添加附加服务。`
 2. **指令二**：`选择月度基础版，添加在线服务和自定义个人资料。`
 3. **指令三**：`选择年度高级版，添加更大存储空间。`
 
 #### 核心行为与安全规范
-- **虚构数据**：AI 演示采用固定虚构身份信息（姓名：`演示用户`，邮箱：`demo@example.com`，手机号：`13800000000`）。
+- **本地个人资料**：姓名、邮箱和手机号在浏览器本地解析、校验和填写；示例指令使用虚构资料，不再静默套用固定身份。
 - **汇总步交还确认权**：AI 会依次完成前三步填写，并精准**停留在第 4 步汇总页**，不会自动点击最终确认提交，由访客亲自核对信息后决定是否提交。
-- **隐私保护与输入拦截**：自定义输入仅用于描述套餐、计费周期与附加服务。系统会在前端自动拦截包含邮箱格式或疑似连续手机号码的输入，防止真实隐私信息外泄。
-- **状态自动重置**：每次启动 AI 任务前，系统会自动清空已有表单状态，防止脏数据干扰。
+- **隐私保护**：外部服务只接收规范化的套餐任务和脱敏页面结构；对话内容不持久化。
+- **事务式执行**：执行前保存快照，主动停止恢复原表单；演示服务失败或结果不一致时本地修正并提示。缺少或冲突的指令不会修改表单。
 
 > [!IMPORTANT]
 > - **技术评估性质**：本功能为基于 Page Agent 官方免费测试 API 的前端技术评估与演示，非生产级 AI 业务系统。
@@ -57,17 +57,17 @@ An AI-assisted multi-step subscription form built with Vue 3 and TypeScript. Wit
 
 ### AI Demo Guide & Recommended Prompts
 
-Click the "AI Demo" button in the bottom-right corner. On first use, review the terms and click "Agree & Start Demo", then choose from the preset prompts:
+Open the liquid-edge orb on the right. Drag it freely; its position is remembered. After reviewing the consent notice, send details one at a time (for example, your name, then email, then plan). The custom assistant remembers each answer and asks for missing fields. You can also start with these plan instructions:
 
 1. **Preset 1**: `Select Yearly Pro plan without addons.`
 2. **Preset 2**: `Select Monthly Arcade plan with Online service and Customizable profile.`
 3. **Preset 3**: `Select Yearly Advanced plan with Larger storage.`
 
 #### Execution Behavior & Privacy Safeguards
-- **Fictitious Identity**: The AI uses fixed mock data (`Demo User` / `demo@example.com` / `13800000000`).
+- **Local Personal Details**: Names, emails, and phone numbers are parsed, validated, and filled locally. Presets use fictitious details; the assistant no longer silently applies a default identity.
 - **Summary Step Handover**: The agent completes steps 1–3 and **stops on Step 4 (Summary)** without clicking final confirmation, leaving the final submission decision to the user.
-- **Privacy Protection**: Custom prompt inputs are strictly for plan preferences. Inputs matching email patterns or continuous digits resembling phone numbers are blocked client-side.
-- **State Reset**: Existing form states are cleared before each AI execution to ensure a clean context.
+- **Privacy Protection**: Only normalized plan instructions and redacted page content reach the external service. Conversations are not persisted.
+- **Transactional Execution**: Stopping restores the previous snapshot. Failed or inconsistent demo results are corrected locally with a visible notice. Incomplete or conflicting commands leave the form unchanged.
 
 > [!IMPORTANT]
 > - **Evaluation Only**: This is a frontend technology demonstration powered by the Page Agent public test API, not a production AI service.
@@ -101,9 +101,12 @@ pnpm install
 pnpm run dev
 ```
 
-### 代码检查与构建 / Lint & Build
+### 测试、代码检查与构建 / Test, Lint & Build
 
 ```bash
+# 运行自动化测试
+pnpm run test
+
 # 代码风格与语法检查
 pnpm run lint
 
@@ -142,7 +145,7 @@ pnpm run deploy
 
 ## 隐私与第三方服务 / Privacy and Third-Party Services
 
-Page Agent 在浏览器内分析简化后的页面 DOM 结构，仅在访客主动发起指令时将任务指令及必要视图信息发送至配置的模型服务进行规划与解析。本演示使用官方测试服务，全程使用固定虚构数据。
+Page Agent 在浏览器内分析脱敏后的页面 DOM 结构，仅在访客补齐指令后将规范化套餐任务及必要视图信息发送至官方测试服务。姓名、邮箱和手机号由本地执行器处理，对话记录仅存在于当前页面。技术演示仍建议使用虚构资料。
 
 - [Page Agent Terms of Use & Privacy](https://github.com/alibaba/page-agent/blob/main/docs/terms-and-privacy.md)
 - [Page Agent GitHub Repository](https://github.com/alibaba/page-agent)
@@ -154,3 +157,4 @@ Page Agent 在浏览器内分析简化后的页面 DOM 结构，仅在访客主�
 - 本项目基于 [MIT License](https://opensource.org/licenses/MIT) 开源。
 - [Alibaba Page Agent](https://github.com/alibaba/page-agent) - 页面内智能体自动化能力
 - [Frontend Mentor](https://www.frontendmentor.io/) - 多步骤表单 UI 设计与交互规范
+- [React Bits Orb](https://reactbits.dev/backgrounds/orb)、[ElevenLabs UI](https://github.com/elevenlabs/ui) - 液态球形助手的视觉参考；本项目采用独立 Canvas 实现。
