@@ -81,7 +81,7 @@ const selectLanguage = (code: string) => {
   isOpen.value = false; // 选择后先收起下拉菜单
 
   // 选取需要应用轻烟消散与凝聚动效的页面核心内容区域（以整块协调过渡，避免局部错位）
-  const targetSelectors = ".navbar ul, .content, .agent-panel";
+  const targetSelectors = ".navbar ul, .content, .agent-panel-surface";
 
   switchWithDissolve(targetSelectors, () => {
     locale.value = code;
