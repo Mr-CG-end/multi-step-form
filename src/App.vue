@@ -11,6 +11,5 @@ import PageAgentDemo from "@/components/PageAgentDemo.vue";
 </script>
 
 <style lang="scss">
-@use "@/assets/scss/default.scss";
 @use "@/assets/scss/commons.scss";
 </style>

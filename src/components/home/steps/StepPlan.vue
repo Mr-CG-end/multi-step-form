@@ -12,7 +12,7 @@
         @click="setPlanItem(item.id)"
       >
         <img
-          :src="require(`@/assets/images/${item.icon}`)"
+          :src="planIcons[item.icon]"
           class="icon"
           alt=""
           aria-hidden="true"
@@ -67,6 +67,15 @@ import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useCommonsStore } from "@/stores/commons";
 import { STEP2_ITEMS } from "@/constants/formData";
+import iconArcade from "@/assets/images/icon-arcade.svg";
+import iconAdvanced from "@/assets/images/icon-advanced.svg";
+import iconPro from "@/assets/images/icon-pro.svg";
+
+const planIcons: Record<string, string> = {
+  "icon-arcade.svg": iconArcade,
+  "icon-advanced.svg": iconAdvanced,
+  "icon-pro.svg": iconPro,
+};
 
 const { t } = useI18n();
 
