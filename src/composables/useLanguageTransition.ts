@@ -33,6 +33,21 @@ function normalizeTargets(
     );
 }
 
+function waitForRender(): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      resolve();
+    };
+
+    const timeoutId = window.setTimeout(finish, 120);
+    requestAnimationFrame(finish);
+  });
+}
+
 export function useLanguageTransition() {
   const isTransitioning = ref(false);
   let activeTween: gsap.core.Tween | null = null;
@@ -40,15 +55,17 @@ export function useLanguageTransition() {
   let originalOpacity = new Map<HTMLElement, string>();
 
   const restore = () => {
+    if (!isTransitioning.value) return;
+    isTransitioning.value = false;
     transitionVersion += 1;
-    activeTween?.kill();
+    const tween = activeTween;
     activeTween = null;
+    tween?.kill();
     originalOpacity.forEach((value, element) => {
       if (value) element.style.opacity = value;
       else element.style.removeProperty("opacity");
     });
     originalOpacity = new Map();
-    isTransitioning.value = false;
   };
 
   const switchWithDissolve = (
@@ -83,9 +100,7 @@ export function useLanguageTransition() {
           if (version !== transitionVersion) return;
           onLocaleChange();
           await nextTick();
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve()),
-          );
+          await waitForRender();
           if (version !== transitionVersion) return;
 
           activeTween = gsap.to(targets, {
@@ -93,11 +108,13 @@ export function useLanguageTransition() {
             opacity: 1,
             ease: "power2.out",
             onComplete: restore,
+            onInterrupt: restore,
           });
         } catch {
           restore();
         }
       },
+      onInterrupt: restore,
     });
   };
 
