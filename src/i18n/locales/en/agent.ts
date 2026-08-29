@@ -59,7 +59,7 @@ export default {
     UNKNOWN_COMMAND: "I could not identify a complete request. Please rephrase it.",
   },
   chat: {
-    welcome: "You can send one detail at a time, such as your name, email, or plan. I will remember each answer and ask only for what is still missing.",
+    welcome: "You can send one detail at a time, such as your name, email, or plan. I will fill each confirmed answer into the form, ask only for what is still missing, and start the demo once everything is confirmed.",
     listSeparator: ", ",
     confirmed: "Confirmed: {name}, {cycle} {plan}, add-ons: {addons}. Starting the step-by-step demo now.",
     repaired: "The demo service did not finish cleanly, so the result was corrected locally and left on Summary.",

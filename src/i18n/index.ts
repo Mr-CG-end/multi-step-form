@@ -9,7 +9,7 @@ const LOCAL_STORAGE_KEY = "multi-step-form-locale";
 /**
  * 获取用户语言偏好
  * @returns {string} 用户语言偏好
- * localstorage(本地储存) -> navigator.language(浏览器语言) -> default(默认)
+ * localstorage(本地储存) -> 简体中文(默认)
  */
 const getStoredLocale = (): string => {
   try {
@@ -19,10 +19,6 @@ const getStoredLocale = (): string => {
   } catch (error) {
     console.error("读取语言偏好失败", error);
   }
-  const browserLocale = navigator.language;
-  if (browserLocale.startsWith("zh-TW") || browserLocale.startsWith("zh-HK"))
-    return "zh-TW";
-  if (browserLocale.startsWith("en")) return "en";
   return "zh-CN";
 };
 

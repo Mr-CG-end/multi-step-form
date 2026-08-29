@@ -8,8 +8,6 @@
       'is-dragging': isDragging,
     }"
   >
-    <div ref="trailLayerRef" class="orb-trail-layer" aria-hidden="true"></div>
-
     <button
       ref="orbRef"
       type="button"
@@ -24,7 +22,11 @@
       @pointercancel="onPointerCancel"
       @click="onOrbClick"
     >
-      <AgentOrbVisual :state="status" :paused="isPageHidden" :active="isOpen || isDragging" />
+      <AgentOrbVisual
+        :state="status"
+        :paused="isPageHidden"
+        :active="isOpen || isDragging"
+      />
       <span class="orb-core">
         <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
           <path
@@ -64,7 +66,12 @@
             @click="closePanel"
           >
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              <path
+                d="m5 5 10 10M15 5 5 15"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
             </svg>
           </button>
         </header>
@@ -99,7 +106,11 @@
               class="message"
               :class="[`is-${message.role}`, `is-${message.kind}`]"
             >
-              <span v-if="message.role !== 'user'" class="message-mark" aria-hidden="true"></span>
+              <span
+                v-if="message.role !== 'user'"
+                class="message-mark"
+                aria-hidden="true"
+              ></span>
               <p>{{ message.content }}</p>
             </article>
 
@@ -119,7 +130,12 @@
           <div class="runtime-status" :class="`is-${status}`" role="status">
             <span class="runtime-dot" aria-hidden="true"></span>
             <span>{{ runtimeStatusText }}</span>
-            <button v-if="isRunning" type="button" :disabled="isStopping" @click="handleStop">
+            <button
+              v-if="isRunning"
+              type="button"
+              :disabled="isStopping"
+              @click="handleStop"
+            >
               {{ t("agent.custom.stop") }}
             </button>
           </div>
@@ -143,7 +159,13 @@
                 :aria-label="t('agent.custom.execute')"
               >
                 <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <path d="M3.5 10h12M11 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                  <path
+                    d="M3.5 10h12M11 5.5l4.5 4.5-4.5 4.5"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
                 </svg>
               </button>
             </div>
@@ -156,14 +178,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AgentOrbVisual from "@/components/AgentOrbVisual.vue";
 import { useCommonsStore } from "@/stores/commons";
@@ -184,12 +199,12 @@ const CONSENT_VERSION = "2";
 
 const { t, locale } = useI18n();
 const store = useCommonsStore();
+const { applyAssistantProgress } = store;
 const { status, activityState, activity, load, execute, stop, dispose } =
   usePageAgentDemo();
 
 const orbRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
-const trailLayerRef = ref<HTMLElement | null>(null);
 const messagesRef = ref<HTMLElement | null>(null);
 const inputRef = ref<HTMLTextAreaElement | null>(null);
 const consentButtonRef = ref<HTMLButtonElement | null>(null);
@@ -202,7 +217,10 @@ const clarificationField = ref<ClarificationField | undefined>();
 let messageId = 0;
 
 const isRunning = computed(
-  () => status.value === "running" || status.value === "loading" || status.value === "stopping",
+  () =>
+    status.value === "running" ||
+    status.value === "loading" ||
+    status.value === "stopping",
 );
 const isStopping = computed(() => status.value === "stopping");
 const showPresets = computed(
@@ -280,13 +298,7 @@ const {
   onPointerUp,
   onPointerCancel,
   refreshPanelPosition,
-} = useDraggableAgentOrb(
-  orbRef,
-  panelRef,
-  trailLayerRef,
-  isOpen,
-  togglePanel,
-);
+} = useDraggableAgentOrb(orbRef, panelRef, isOpen, togglePanel);
 
 const closePanel = () => {
   isOpen.value = false;
@@ -315,7 +327,9 @@ const getConflictMessage = (codes: string[]): string => {
 const getClarificationQuestion = (field: ClarificationField): string =>
   String(t(`agent.clarification.${field}`));
 
-const formatIntentSummary = (intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>): string => {
+const formatIntentSummary = (
+  intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
+): string => {
   const plan = String(t(`items.plans.${intent.plan}.name`));
   const cycle = String(t(`common.period.${intent.billingCycle}`));
   const addons = intent.addonIds.length
@@ -336,6 +350,12 @@ const formatIntentSummary = (intent: NonNullable<ReturnType<typeof toCompleteFor
 const runIntent = async (
   intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
 ) => {
+  // 增量对话已经把所有字段填入汇总页时，不再重复清空并让远程
+  // Agent 重放一遍；预设的一次性完整指令仍会走 Page Agent 演示。
+  if (store.matchesAssistantIntent(intent)) {
+    appendMessage("assistant", "success", String(t("agent.chat.completed")));
+    return;
+  }
   appendMessage("assistant", "activity", formatIntentSummary(intent));
   pendingIntent.value = undefined;
   clarificationField.value = undefined;
@@ -362,8 +382,15 @@ const submitCommand = (value: string) => {
   });
 
   pendingIntent.value = result.intent;
+  if (result.conflictCodes.length === 0) {
+    applyAssistantProgress(result.intent);
+  }
   if (result.status === "invalid") {
-    appendMessage("assistant", "error", getConflictMessage(result.conflictCodes));
+    appendMessage(
+      "assistant",
+      "error",
+      getConflictMessage(result.conflictCodes),
+    );
   }
 
   const completeIntent = toCompleteFormIntent(result);
@@ -375,12 +402,12 @@ const submitCommand = (value: string) => {
   const conflictField = result.conflictCodes.includes("MULTIPLE_PLANS")
     ? "plan"
     : result.conflictCodes.includes("MULTIPLE_BILLING_CYCLES")
-      ? "billingCycle"
-      : result.conflictCodes.includes("INVALID_EMAIL")
-        ? "email"
-        : result.conflictCodes.includes("INVALID_PHONE")
-          ? "phone"
-          : undefined;
+    ? "billingCycle"
+    : result.conflictCodes.includes("INVALID_EMAIL")
+    ? "email"
+    : result.conflictCodes.includes("INVALID_PHONE")
+    ? "phone"
+    : undefined;
   const nextField = conflictField || result.missingFields[0];
   if (nextField) {
     clarificationField.value = nextField;
@@ -462,52 +489,6 @@ onUnmounted(() => {
   z-index: 2147482500 !important;
 }
 
-.orb-trail-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 2147482998;
-  contain: strict;
-}
-
-:deep(.orb-smoke-particle) {
-  --particle-x: 0px;
-  --particle-y: 0px;
-  --particle-dx: 0px;
-  --particle-dy: 0px;
-  --particle-color: rgba(0, 242, 254, 0.82);
-  --particle-color-secondary: rgba(79, 172, 254, 0.5);
-  --particle-size: 48px;
-  --particle-duration: 600ms;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: var(--particle-size);
-  height: var(--particle-size);
-  margin-top: calc(var(--particle-size) * -0.5);
-  margin-left: calc(var(--particle-size) * -0.5);
-  border-radius: 50%;
-  opacity: 0;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 0.95) 0%,
-    var(--particle-color) 32%,
-    var(--particle-color-secondary) 64%,
-    transparent 85%
-  );
-  box-shadow: 0 0 24px var(--particle-color);
-  filter: blur(10px);
-  transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.7);
-  will-change: transform, opacity, filter;
-}
-
-:deep(.orb-smoke-particle.is-active) {
-  animation: aurora-haze-trail var(--particle-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
 .agent-orb {
   position: fixed;
   top: 0;
@@ -530,7 +511,7 @@ onUnmounted(() => {
 }
 
 .agent-orb:focus-visible {
-  outline: 3px solid rgba(127, 0, 255, 0.45);
+  outline: 3px solid rgba(65, 62, 255, 0.45);
   outline-offset: 4px;
 }
 
@@ -545,9 +526,9 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   pointer-events: none;
-  color: #ffffff;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4))
-    drop-shadow(0 0 8px rgba(255, 255, 255, 0.75));
+  color: #02295a;
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.95))
+    drop-shadow(0 0 6px rgba(189, 226, 253, 0.9));
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -588,16 +569,23 @@ onUnmounted(() => {
   background: rgba(251, 252, 255, 0.96);
   border: 1px solid rgba(23, 74, 137, 0.14);
   border-radius: 20px;
-  box-shadow: 0 20px 46px rgba(2, 41, 90, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 46px rgba(2, 41, 90, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);
   transform-origin: right center;
   will-change: transform, opacity;
   animation: panel-gather 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.agent-panel-positioner[data-placement="right"] .agent-panel-surface { transform-origin: left center; }
-.agent-panel-positioner[data-placement="top"] .agent-panel-surface { transform-origin: center bottom; }
-.agent-panel-positioner[data-placement="bottom"] .agent-panel-surface { transform-origin: center top; }
+.agent-panel-positioner[data-placement="right"] .agent-panel-surface {
+  transform-origin: left center;
+}
+.agent-panel-positioner[data-placement="top"] .agent-panel-surface {
+  transform-origin: center bottom;
+}
+.agent-panel-positioner[data-placement="bottom"] .agent-panel-surface {
+  transform-origin: center top;
+}
 
 .panel-header {
   display: flex;
@@ -635,8 +623,14 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.icon-button:hover { background: rgba(23, 74, 137, 0.08); color: var(--agent-navy); }
-.icon-button svg { width: 18px; height: 18px; }
+.icon-button:hover {
+  background: rgba(23, 74, 137, 0.08);
+  color: var(--agent-navy);
+}
+.icon-button svg {
+  width: 18px;
+  height: 18px;
+}
 
 .consent-view {
   padding: 20px;
@@ -644,7 +638,11 @@ onUnmounted(() => {
   color: var(--agent-ink);
 }
 
-.consent-intro { margin: 0 0 12px; font-size: 14px; line-height: 1.55; }
+.consent-intro {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.55;
+}
 .consent-view ul {
   display: flex;
   flex-direction: column;
@@ -657,9 +655,18 @@ onUnmounted(() => {
   line-height: 1.55;
   list-style: disc;
 }
-.consent-view li { display: list-item; width: auto; }
-.consent-view li + li { margin-top: 0; }
-.consent-actions { display: grid; gap: 8px; margin-top: 20px; }
+.consent-view li {
+  display: list-item;
+  width: auto;
+}
+.consent-view li + li {
+  margin-top: 0;
+}
+.consent-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
 
 .primary-button,
 .send-button {
@@ -720,16 +727,30 @@ onUnmounted(() => {
   background: var(--agent-blue);
 }
 
-.message.is-user { justify-content: flex-end; }
+.message.is-user {
+  justify-content: flex-end;
+}
 .message.is-user p {
   color: #fff;
   background: var(--agent-navy);
   border-radius: 13px 13px 4px 13px;
 }
-.message.is-warning p { background: #f4eee1; color: #69542b; }
-.message.is-error p { background: #f7e9ea; color: #813f45; }
-.message.is-success p { background: #e9f2ed; color: #356a51; }
-.message.is-activity p { border: 1px solid rgba(23, 74, 137, 0.12); background: transparent; }
+.message.is-warning p {
+  background: #f4eee1;
+  color: #69542b;
+}
+.message.is-error p {
+  background: #f7e9ea;
+  color: #813f45;
+}
+.message.is-success p {
+  background: #e9f2ed;
+  color: #356a51;
+}
+.message.is-activity p {
+  border: 1px solid rgba(23, 74, 137, 0.12);
+  background: transparent;
+}
 
 .preset-chips {
   display: flex;
@@ -747,7 +768,9 @@ onUnmounted(() => {
   font-size: 11px;
   cursor: pointer;
 }
-.preset-chips button:hover { background: #edf3f8; }
+.preset-chips button:hover {
+  background: #edf3f8;
+}
 
 .runtime-status {
   display: flex;
@@ -762,16 +785,48 @@ onUnmounted(() => {
   font-size: 11.5px;
 }
 
-.runtime-dot { width: 7px; height: 7px; border-radius: 50%; background: #7c91a3; }
+.runtime-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7c91a3;
+}
 .runtime-status.is-running .runtime-dot,
-.runtime-status.is-loading .runtime-dot { background: var(--agent-blue); animation: status-breathe 1.2s ease-in-out infinite; }
-.runtime-status.is-completed .runtime-dot { background: #639378; }
-.runtime-status.is-error .runtime-dot { background: #a9565d; }
-.runtime-status button { margin-left: auto; border: 0; color: #813f45; background: transparent; cursor: pointer; font-size: 11.5px; }
+.runtime-status.is-loading .runtime-dot {
+  background: var(--agent-blue);
+  animation: status-breathe 1.2s ease-in-out infinite;
+}
+.runtime-status.is-completed .runtime-dot {
+  background: #639378;
+}
+.runtime-status.is-error .runtime-dot {
+  background: #a9565d;
+}
+.runtime-status button {
+  margin-left: auto;
+  border: 0;
+  color: #813f45;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11.5px;
+}
 
-.composer { padding: 12px 14px 14px; }
-.composer > label { display: block; margin-bottom: 6px; color: var(--agent-ink); font-family: "ubuntu-medium", sans-serif; font-size: 11.5px; }
-.composer-row { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: end; gap: 8px; }
+.composer {
+  padding: 12px 14px 14px;
+}
+.composer > label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--agent-ink);
+  font-family: "ubuntu-medium", sans-serif;
+  font-size: 11.5px;
+}
+.composer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: end;
+  gap: 8px;
+}
 .composer textarea {
   min-height: 50px;
   max-height: 100px;
@@ -787,57 +842,77 @@ onUnmounted(() => {
   line-height: 1.45;
   box-sizing: border-box;
 }
-.composer textarea:focus { border-color: var(--agent-blue); box-shadow: 0 0 0 3px rgba(23, 74, 137, 0.09); }
-.send-button { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; }
-.send-button:active { transform: scale(0.96); }
-.send-button:disabled { cursor: not-allowed; opacity: 0.4; }
-.send-button svg { width: 19px; height: 19px; }
-.privacy-note { margin: 7px 2px 0; color: #7c91a3; font-size: 10.5px; line-height: 1.4; }
+.composer textarea:focus {
+  border-color: var(--agent-blue);
+  box-shadow: 0 0 0 3px rgba(23, 74, 137, 0.09);
+}
+.send-button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+}
+.send-button:active {
+  transform: scale(0.96);
+}
+.send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.send-button svg {
+  width: 19px;
+  height: 19px;
+}
+.privacy-note {
+  margin: 7px 2px 0;
+  color: #7c91a3;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
 
 .is-page-hidden *,
 .is-page-hidden *::before,
-.is-page-hidden *::after { animation-play-state: paused !important; }
+.is-page-hidden *::after {
+  animation-play-state: paused !important;
+}
 
-@keyframes aurora-haze-trail {
-  0% {
-    opacity: 0.88;
-    transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.8);
-    filter: blur(8px) brightness(1.25);
-  }
-  38% {
-    opacity: 0.65;
-    filter: blur(14px) brightness(1.1);
-    transform: translate3d(
-      calc(var(--particle-x) + var(--particle-dx) * 0.45),
-      calc(var(--particle-y) + var(--particle-dy) * 0.45),
-      0
-    ) scale(1.22);
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(
-      calc(var(--particle-x) + var(--particle-dx)),
-      calc(var(--particle-y) + var(--particle-dy)),
-      0
-    ) scale(1.65);
-    filter: blur(24px) brightness(0.9);
-  }
-}
 @keyframes panel-gather {
-  from { opacity: 0; transform: scale(0.94); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
-@keyframes status-breathe { 50% { transform: scale(1.35); opacity: 0.45; } }
+@keyframes status-breathe {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.45;
+  }
+}
 
 @media (max-width: 600px) {
-  .agent-panel-positioner { width: calc(100vw - 28px); max-height: calc(100dvh - 28px); }
-  .agent-panel-surface { border-radius: 16px; }
-  .messages { max-height: min(330px, 42dvh); }
+  .agent-panel-positioner {
+    width: calc(100vw - 28px);
+    max-height: calc(100dvh - 28px);
+  }
+  .agent-panel-surface {
+    border-radius: 16px;
+  }
+  .messages {
+    max-height: min(330px, 42dvh);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .runtime-dot,
-  :deep(.orb-smoke-particle) { animation: none !important; }
-  .agent-panel-surface { animation: none; }
+  .runtime-dot {
+    animation: none !important;
+  }
+  .agent-panel-surface {
+    animation: none;
+  }
 }
 </style>

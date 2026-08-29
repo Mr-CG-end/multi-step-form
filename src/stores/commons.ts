@@ -2,7 +2,11 @@ import { defineStore } from "pinia";
 import { IPersonal } from "@/types/items";
 import { clearPersistedState } from "@/plugins/piniaPersistedState";
 import { ref } from "vue";
-import type { FormIntent, CommonsSnapshot } from "@/types/form-assistant";
+import type {
+  CommonsSnapshot,
+  FormIntent,
+  PartialFormIntent,
+} from "@/types/form-assistant";
 
 export const useCommonsStore = defineStore("commonsStore", () => {
   const nowTab = ref("1");
@@ -68,6 +72,45 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     nowTab.value = "2";
   }
 
+  function applyAssistantProgress(intent: PartialFormIntent) {
+    if (intent.personalInfo.name !== undefined) {
+      personalInfo.value.name = intent.personalInfo.name;
+    }
+    if (intent.personalInfo.email !== undefined) {
+      personalInfo.value.email = intent.personalInfo.email;
+    }
+    if (intent.personalInfo.phone !== undefined) {
+      personalInfo.value.phone = intent.personalInfo.phone;
+    }
+    if (intent.plan !== undefined) plan.value = intent.plan;
+    if (intent.billingCycle !== undefined) {
+      isYearly.value = intent.billingCycle === "yearly";
+    }
+    if (intent.addonIds !== undefined) addonIds.value = [...intent.addonIds];
+
+    const hasPersonalInfo =
+      Boolean(personalInfo.value.name.trim()) &&
+      Boolean(personalInfo.value.email.trim()) &&
+      Boolean(personalInfo.value.phone.trim());
+    if (hasPersonalInfo) addCompletedStep("1");
+    if (hasPersonalInfo && intent.plan !== undefined && intent.billingCycle) {
+      addCompletedStep("2");
+    }
+    if (
+      hasPersonalInfo &&
+      intent.plan !== undefined &&
+      intent.billingCycle &&
+      intent.addonIds !== undefined
+    ) {
+      addCompletedStep("3");
+    }
+
+    if (!hasPersonalInfo) nowTab.value = "1";
+    else if (intent.plan === undefined || !intent.billingCycle) nowTab.value = "2";
+    else if (intent.addonIds === undefined) nowTab.value = "3";
+    else nowTab.value = "4";
+  }
+
   function applyAssistantIntent(intent: FormIntent) {
     personalInfo.value = { ...intent.personalInfo };
     plan.value = intent.plan;
@@ -126,6 +169,7 @@ export const useCommonsStore = defineStore("commonsStore", () => {
     createSnapshot,
     restoreSnapshot,
     prepareAssistantRun,
+    applyAssistantProgress,
     applyAssistantIntent,
     matchesAssistantIntent,
     clearForm,
