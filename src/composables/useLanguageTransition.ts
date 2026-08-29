@@ -52,12 +52,15 @@ export function useLanguageTransition() {
   const isTransitioning = ref(false);
   let activeTween: gsap.core.Tween | null = null;
   let transitionVersion = 0;
+  let fallbackTimer: number | null = null;
   let originalOpacity = new Map<HTMLElement, string>();
 
   const restore = () => {
     if (!isTransitioning.value) return;
     isTransitioning.value = false;
     transitionVersion += 1;
+    if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+    fallbackTimer = null;
     const tween = activeTween;
     activeTween = null;
     tween?.kill();
@@ -116,6 +119,13 @@ export function useLanguageTransition() {
       },
       onInterrupt: restore,
     });
+
+    // 页面切后台或浏览器降帧时，GSAP ticker 可能延迟完成回调；
+    // 到时直接完成当前 Tween，避免语言切换锁死交互。
+    fallbackTimer = window.setTimeout(() => {
+      if (version !== transitionVersion || !isTransitioning.value) return;
+      activeTween?.progress(1);
+    }, 900);
   };
 
   onUnmounted(restore);
