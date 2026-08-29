@@ -15,7 +15,7 @@
                   completed:
                     completedSteps.includes(tab.id) && tab.id !== nowTab,
                   disabled:
-                    !completedSteps.includes(tab.id) && tab.id !== nowTab,
+                    !isStepAccessible(tab.id) && tab.id !== nowTab,
                 },
               ]"
               @click="goToStep(tab.id)"
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed, onUnmounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useCommonsStore } from "@/stores/commons";
@@ -92,6 +92,36 @@ const commonsStore = useCommonsStore();
 const { t } = useI18n();
 const { nowTab, completedSteps } = storeToRefs(commonsStore);
 const { setTabActive, addCompletedStep } = commonsStore;
+
+// 记录本次会话访问过的最远步骤。完成状态仍由 completedSteps 独立维护，
+// 这样用户回到前一步编辑时，仍可返回刚才访问过但尚未提交的步骤。
+const furthestVisitedStep = ref(
+  Math.max(Number(nowTab.value), ...completedSteps.value.map(Number), 1),
+);
+
+watch(nowTab, (step) => {
+  if (step === "1" && completedSteps.value.length === 0) {
+    furthestVisitedStep.value = 1;
+    return;
+  }
+  furthestVisitedStep.value = Math.max(
+    furthestVisitedStep.value,
+    Number(step),
+  );
+});
+
+watch(
+  completedSteps,
+  (steps) => {
+    if (nowTab.value === "1" && steps.length === 0) {
+      furthestVisitedStep.value = 1;
+    }
+  },
+  { deep: true },
+);
+
+const isStepAccessible = (stepId: string): boolean =>
+  Number(stepId) <= furthestVisitedStep.value;
 
 // ---- 步骤组件 ref ----
 
@@ -159,8 +189,8 @@ const showTip = () => {
 const goToStep = (targetId: string) => {
   // 点击当前步骤忽略
   if (targetId === nowTab.value) return;
-  // 已完成的步骤允许跳回
-  if (completedSteps.value.includes(targetId)) {
+  // 已完成或本次会话已经访问过的步骤允许返回
+  if (isStepAccessible(targetId)) {
     setTabActive(targetId);
   } else {
     // 未完成步骤提示
