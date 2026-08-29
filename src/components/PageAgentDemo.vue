@@ -119,7 +119,7 @@
           <div class="runtime-status" :class="`is-${status}`" role="status">
             <span class="runtime-dot" aria-hidden="true"></span>
             <span>{{ runtimeStatusText }}</span>
-            <button v-if="isRunning" type="button" @click="handleStop">
+            <button v-if="isRunning" type="button" :disabled="isStopping" @click="handleStop">
               {{ t("agent.custom.stop") }}
             </button>
           </div>
@@ -134,7 +134,7 @@
                 :placeholder="composerPlaceholder"
                 maxlength="300"
                 rows="2"
-                @keydown.enter.exact.prevent="submitCurrentCommand"
+                @keydown="handleCommandKeydown"
               ></textarea>
               <button
                 type="submit"
@@ -202,8 +202,9 @@ const clarificationField = ref<ClarificationField | undefined>();
 let messageId = 0;
 
 const isRunning = computed(
-  () => status.value === "running" || status.value === "loading",
+  () => status.value === "running" || status.value === "loading" || status.value === "stopping",
 );
+const isStopping = computed(() => status.value === "stopping");
 const showPresets = computed(
   () => messages.value.length <= 1 && !pendingIntent.value && !isRunning.value,
 );
@@ -389,6 +390,12 @@ const submitCommand = (value: string) => {
 
 const submitCurrentCommand = () => submitCommand(command.value);
 
+const handleCommandKeydown = (event: KeyboardEvent) => {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  submitCurrentCommand();
+};
+
 const handleStop = async () => {
   await stop();
   appendMessage("system", "warning", String(t("agent.chat.stopped")));
@@ -462,22 +469,31 @@ onUnmounted(() => {
   --particle-x: 0px;
   --particle-y: 0px;
   --particle-dx: 0px;
-  --particle-dy: -12px;
+  --particle-dy: 0px;
+  --particle-color: rgba(0, 242, 254, 0.9);
+  --particle-size: 10px;
   --particle-duration: 420ms;
   position: fixed;
   top: 0;
   left: 0;
-  width: 18px;
-  height: 18px;
+  width: var(--particle-size);
+  height: var(--particle-size);
   border-radius: 50%;
   opacity: 0;
-  background: radial-gradient(circle, rgba(189, 226, 253, 0.42), rgba(23, 74, 137, 0));
-  filter: blur(2px);
-  transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.55);
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    #ffffff 0%,
+    var(--particle-color) 45%,
+    transparent 85%
+  );
+  box-shadow: 0 0 10px var(--particle-color);
+  filter: blur(0.5px);
+  transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.6);
 }
 
 :deep(.orb-smoke-particle.is-active) {
-  animation: smoke-trail var(--particle-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: stardust-trail var(--particle-duration) cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
 }
 
 .agent-orb {
@@ -489,7 +505,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  color: #eef8ff;
+  color: #ffffff;
   background: transparent;
   cursor: grab;
   touch-action: none;
@@ -498,10 +514,11 @@ onUnmounted(() => {
   will-change: transform;
   contain: layout;
   overflow: visible;
+  transition: none;
 }
 
 .agent-orb:focus-visible {
-  outline: 3px solid rgba(23, 74, 137, 0.35);
+  outline: 3px solid rgba(127, 0, 255, 0.45);
   outline-offset: 4px;
 }
 
@@ -512,23 +529,29 @@ onUnmounted(() => {
 
 .orb-core {
   position: absolute;
-  inset: 7px;
+  inset: 0;
   display: grid;
   place-items: center;
   pointer-events: none;
-  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  color: #ffffff;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4))
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.75));
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.agent-orb:hover .orb-core,
+.agent-orb:hover .orb-core {
+  transform: scale(1.08) rotate(6deg);
+}
+
 .agent-orb.is-open .orb-core {
-  transform: scale(0.93);
+  transform: scale(0.92);
 }
 
 .orb-core svg {
   position: relative;
   z-index: 1;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
 }
 
 .agent-panel-positioner {
@@ -759,9 +782,25 @@ onUnmounted(() => {
 .is-page-hidden *::before,
 .is-page-hidden *::after { animation-play-state: paused !important; }
 
-@keyframes smoke-trail {
-  0% { opacity: 0.5; transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.65); }
-  100% { opacity: 0; transform: translate3d(calc(var(--particle-x) + var(--particle-dx)), calc(var(--particle-y) + var(--particle-dy)), 0) scale(1.45); }
+@keyframes stardust-trail {
+  0% {
+    opacity: 0.95;
+    transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(1);
+    filter: blur(0.5px) brightness(1.3);
+  }
+  50% {
+    opacity: 0.7;
+    filter: blur(1px) brightness(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(
+      calc(var(--particle-x) + var(--particle-dx)),
+      calc(var(--particle-y) + var(--particle-dy)),
+      0
+    ) scale(0.1);
+    filter: blur(2.5px);
+  }
 }
 @keyframes panel-gather {
   from { opacity: 0; transform: scale(0.88); filter: blur(6px); }

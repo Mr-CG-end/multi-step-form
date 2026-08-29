@@ -1,8 +1,8 @@
 body {
     min-height: 100%;
-    min-width: 1024px;
     width: 100%;
     height: auto;
+    overflow-x: hidden;
 
     background-color: #EEF5FF;
 }
@@ -11,17 +11,12 @@ ul li {
     list-style: none;
 }
 
-ul {
-    display: flex;
-    justify-content: center;
-    padding: 0;
-    margin: 12px 0;
-}
-
 // 左侧导航垂直布局
 .navbar ul {
+    display: flex;
     flex-direction: column;
     justify-content: flex-start;
+    padding: 0;
     margin: 20px 0;
     padding-left: 30px;
 }
@@ -79,17 +74,20 @@ input {
 
 @font-face {
     font-family: "ubuntu-regular";
-    src: url("@/assets/fonts/Ubuntu-Regular.ttf")
+    src: url("@/assets/fonts/Ubuntu-Regular.ttf") format("truetype");
+    font-display: swap;
 }
 
 @font-face {
     font-family: "ubuntu-medium";
-    src: url("@/assets/fonts/Ubuntu-Medium.ttf")
+    src: url("@/assets/fonts/Ubuntu-Medium.ttf") format("truetype");
+    font-display: swap;
 }
 
 @font-face {
     font-family: "ubuntu-bold";
-    src: url("@/assets/fonts/Ubuntu-Bold.ttf")
+    src: url("@/assets/fonts/Ubuntu-Bold.ttf") format("truetype");
+    font-display: swap;
 }
 
 // desktop
@@ -536,7 +534,7 @@ input {
     }
 
     #container {
-        width: 375px;
+        width: min(375px, 100vw);
         background-color: #EEF5FF;
         height: 100vh;
         min-height: 667px;
@@ -550,7 +548,7 @@ input {
     }
 
     .navbar {
-        width: 375px;
+        width: min(375px, 100vw);
         height: 152px;
         margin: 0;
         background-image: url('@/assets/images/bg-sidebar-mobile.svg');
@@ -580,6 +578,8 @@ input {
         border-radius: 10px;
         //width: 290px;
         height: auto;
+        width: 100%;
+        box-sizing: border-box;
         padding: 27px 25px;
         display: inline-block;
 
@@ -595,7 +595,7 @@ input {
 
         .semi-title {
             color: #95969B;
-            width: 280px;
+            width: auto;
             line-height: 23px;
         }
     }

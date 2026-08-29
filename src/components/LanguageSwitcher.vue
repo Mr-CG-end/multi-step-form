@@ -1,10 +1,15 @@
 <template>
   <div class="language-switcher" ref="switcherRef">
     <!-- 触发按钮 -->
-    <div
+    <button
+      type="button"
       class="selector"
       :class="{ 'is-open': isOpen }"
+      aria-haspopup="listbox"
+      :aria-expanded="isOpen"
+      aria-controls="language-options"
       @click="toggleDropdown"
+      @keydown="handleTriggerKeydown"
     >
       <span>{{ currentLanguageLabel }}</span>
       <svg
@@ -24,16 +29,30 @@
           stroke-linejoin="round"
         />
       </svg>
-    </div>
+    </button>
 
     <!-- 下拉菜单：带淡入淡出动画 -->
     <Transition name="dropdown">
-      <ul v-if="isOpen" class="options-list">
+      <ul
+        v-if="isOpen"
+        id="language-options"
+        ref="optionsListRef"
+        class="options-list"
+        role="listbox"
+        :aria-activedescendant="activeOptionId"
+        tabindex="-1"
+        @keydown="handleListKeydown"
+      >
         <li
           v-for="lang in languages"
           :key="lang.code"
+          :id="`language-option-${lang.code}`"
           class="option-item"
           :class="{ active: locale === lang.code }"
+          role="option"
+          :aria-selected="locale === lang.code"
+          tabindex="0"
+          @focus="activeIndex = languages.findIndex((item) => item.code === lang.code)"
           @click="selectLanguage(lang.code)"
         >
           <span class="indicator" v-show="locale === lang.code"></span>
@@ -45,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { setStoredLocale } from "@/i18n";
 import { useLanguageTransition } from "@/composables/useLanguageTransition";
@@ -61,6 +80,11 @@ const languages = [
 
 const isOpen = ref(false);
 const switcherRef = ref<HTMLElement | null>(null);
+const optionsListRef = ref<HTMLElement | null>(null);
+const activeIndex = ref(0);
+const activeOptionId = computed(() =>
+  isOpen.value ? `language-option-${languages[activeIndex.value]?.code}` : undefined,
+);
 
 // 计算当前语言显示的名称
 const currentLanguageLabel = computed(() => {
@@ -70,6 +94,47 @@ const currentLanguageLabel = computed(() => {
 const toggleDropdown = () => {
   if (isTransitioning.value) return;
   isOpen.value = !isOpen.value;
+  if (isOpen.value) {
+    activeIndex.value = Math.max(0, languages.findIndex((lang) => lang.code === locale.value));
+    nextTick(() => focusActiveOption());
+  }
+};
+
+const focusActiveOption = () => {
+  const option = optionsListRef.value?.querySelector<HTMLElement>(
+    `#language-option-${languages[activeIndex.value]?.code}`,
+  );
+  option?.focus();
+};
+
+const moveActive = (delta: number) => {
+  activeIndex.value = (activeIndex.value + delta + languages.length) % languages.length;
+  nextTick(() => focusActiveOption());
+};
+
+const handleTriggerKeydown = (event: KeyboardEvent) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    if (!isOpen.value) toggleDropdown();
+    else moveActive(event.key === "ArrowDown" ? 1 : -1);
+  } else if (event.key === "Escape" && isOpen.value) {
+    event.preventDefault();
+    isOpen.value = false;
+  }
+};
+
+const handleListKeydown = (event: KeyboardEvent) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    moveActive(event.key === "ArrowDown" ? 1 : -1);
+  } else if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    selectLanguage(languages[activeIndex.value].code);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    isOpen.value = false;
+    nextTick(() => switcherRef.value?.querySelector<HTMLButtonElement>(".selector")?.focus());
+  }
 };
 
 const selectLanguage = (code: string) => {
@@ -85,6 +150,7 @@ const selectLanguage = (code: string) => {
 
   switchWithDissolve(targetSelectors, () => {
     locale.value = code;
+    document.documentElement.lang = code;
     setStoredLocale(code);
   });
 };
@@ -97,7 +163,12 @@ const handleClickOutside = (event: MouseEvent) => {
 };
 
 onMounted(() => {
+  document.documentElement.lang = locale.value;
   document.addEventListener("click", handleClickOutside);
+});
+
+watch(locale, (code) => {
+  document.documentElement.lang = code;
 });
 
 onUnmounted(() => {
@@ -131,6 +202,9 @@ onUnmounted(() => {
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 16px rgba(3, 41, 90, 0.06), 0 2px 4px rgba(3, 41, 90, 0.04);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  font: inherit;
+  text-align: left;
+  appearance: none;
 }
 
 .selector:hover,
@@ -179,6 +253,14 @@ onUnmounted(() => {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.option-item:focus-visible,
+.selector:focus-visible {
+  outline: 2px solid #413eff;
+  outline-offset: 2px;
 }
 
 .option-item:hover {
@@ -214,5 +296,15 @@ onUnmounted(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: scale(0.95) translateY(-5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selector,
+  .arrow,
+  .option-item,
+  .dropdown-enter-active,
+  .dropdown-leave-active {
+    transition: none;
+  }
 }
 </style>

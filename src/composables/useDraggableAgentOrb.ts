@@ -4,7 +4,15 @@ const STORAGE_KEY = "multi-step-form-agent-orb-position-v1";
 const ORB_SIZE = 56;
 const SAFE_MARGIN = 14;
 const DRAG_THRESHOLD = 6;
-const TRAIL_DISTANCE = 13;
+const TRAIL_DISTANCE = 7;
+const POOL_SIZE = 28;
+const AURORA_COLORS = [
+  "rgba(0, 242, 254, 0.9)",   // Cyan
+  "rgba(127, 0, 255, 0.9)",   // Violet
+  "rgba(255, 0, 127, 0.9)",   // Magenta
+  "rgba(79, 172, 254, 0.9)",  // Azure
+  "rgba(255, 179, 0, 0.9)",   // Amber Gold
+];
 
 interface Point {
   x: number;
@@ -38,6 +46,7 @@ export function useDraggableAgentOrb(
   let pendingPosition: Point | null = null;
   let particleIndex = 0;
   let normalizedPosition: StoredPosition = { version: 1, xRatio: 1, yRatio: 0.82 };
+  let panelSize: { width: number; height: number } | null = null;
   const particles: HTMLElement[] = [];
 
   const viewportBounds = () => {
@@ -69,7 +78,7 @@ export function useDraggableAgentOrb(
     if (orbRef.value) {
       orbRef.value.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
     }
-    updatePanelPosition();
+    updatePanelPosition(false);
   };
 
   const schedulePosition = (next: Point) => {
@@ -131,7 +140,7 @@ export function useDraggableAgentOrb(
   const createParticlePool = () => {
     const layer = trailLayerRef.value;
     if (!layer || particles.length > 0) return;
-    for (let index = 0; index < 12; index += 1) {
+    for (let index = 0; index < POOL_SIZE; index += 1) {
       const particle = document.createElement("span");
       particle.className = "orb-smoke-particle";
       particle.addEventListener("animationend", () => {
@@ -155,34 +164,48 @@ export function useDraggableAgentOrb(
     }
     const particle = particles[particleIndex % particles.length];
     particleIndex += 1;
-    const seed = particleIndex * 17;
-    const jitter = ((seed % 11) - 5) * 0.6;
-    const duration = 360 + (seed % 130);
+    const seed = particleIndex * 31;
+    const color = AURORA_COLORS[particleIndex % AURORA_COLORS.length];
+    const size = 6 + (seed % 10);
+    const angle = ((seed % 360) * Math.PI) / 180;
+    const spread = (seed % 10) - 5;
+    const speed = Math.hypot(velocity.x, velocity.y);
+    const damp = Math.min(1.4, Math.max(0.5, speed * 0.07));
+    const duration = 380 + (seed % 160);
+
     particle.classList.remove("is-active");
     void particle.offsetWidth;
     particle.style.setProperty("--particle-x", `${point.x}px`);
     particle.style.setProperty("--particle-y", `${point.y}px`);
+    particle.style.setProperty("--particle-color", color);
+    particle.style.setProperty("--particle-size", `${size}px`);
     particle.style.setProperty(
       "--particle-dx",
-      `${Math.max(-24, Math.min(24, -velocity.x * 2.2 + jitter))}px`,
+      `${-velocity.x * damp + Math.cos(angle) * spread}px`,
     );
     particle.style.setProperty(
       "--particle-dy",
-      `${Math.max(-24, Math.min(24, -velocity.y * 2.2 - 8 - jitter))}px`,
+      `${-velocity.y * damp + Math.sin(angle) * spread}px`,
     );
     particle.style.setProperty("--particle-duration", `${duration}ms`);
     particle.classList.add("is-active");
   };
 
-  function updatePanelPosition(): void {
+  function updatePanelPosition(measure = true): void {
     const panel = panelRef.value;
     if (!panel || !isOpen.value) return;
 
     const gap = 14;
     const viewport = viewportBounds();
     panel.style.maxHeight = `${Math.max(0, viewport.height - SAFE_MARGIN * 2)}px`;
-    const panelWidth = panel.offsetWidth || Math.min(360, viewport.width - 24);
-    const panelHeight = panel.offsetHeight || Math.min(520, viewport.height - 24);
+    if (measure || !panelSize) {
+      panelSize = {
+        width: panel.offsetWidth || Math.min(360, viewport.width - 24),
+        height: panel.offsetHeight || Math.min(520, viewport.height - 24),
+      };
+    }
+    const panelWidth = panelSize.width;
+    const panelHeight = panelSize.height;
     const orbCenter = {
       x: position.x + ORB_SIZE / 2,
       y: position.y + ORB_SIZE / 2,
@@ -295,6 +318,7 @@ export function useDraggableAgentOrb(
   const cancelPointer = (event: PointerEvent) => finishPointer(event, true);
 
   const onResize = () => {
+    panelSize = null;
     const { minX, minY, maxX, maxY } = viewportBounds();
     applyPosition({
       x: minX + (maxX - minX) * normalizedPosition.xRatio,
@@ -308,6 +332,7 @@ export function useDraggableAgentOrb(
 
   const refreshPanelPosition = async () => {
     await nextTick();
+    panelSize = null;
     updatePanelPosition();
   };
 

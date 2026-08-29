@@ -16,6 +16,15 @@ interface SegmentPart {
 
 const MAX_ANIMATED_CHARACTERS = 520;
 
+function shouldReduceTransition(): boolean {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return true;
+  const navigatorWithMemory = navigator as Navigator & { deviceMemory?: number };
+  return (
+    (navigator.hardwareConcurrency > 0 && navigator.hardwareConcurrency <= 2) ||
+    (navigatorWithMemory.deviceMemory !== undefined && navigatorWithMemory.deviceMemory <= 2)
+  );
+}
+
 function ensureSmokeFilter(): void {
   if (document.getElementById("character-smoke-filter-defs")) return;
   const wrapper = document.createElement("div");
@@ -234,7 +243,7 @@ export function useLanguageTransition() {
     onLocaleChange: () => void,
   ): void => {
     if (isTransitioning.value) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (shouldReduceTransition()) {
       onLocaleChange();
       return;
     }
