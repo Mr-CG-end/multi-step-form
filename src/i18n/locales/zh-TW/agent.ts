@@ -75,4 +75,11 @@ export default {
   notice: {
     localPrivacy: "個人資料只在本機處理；外部服務只接收方案偏好和去識別化頁面。",
   },
+  guide: {
+    badge: "AI 智慧填表",
+    title: "支援一句話快速填表",
+    desc: "只需說出你的姓名和方案偏好，AI 助手將自動為你完成多步表單！",
+    action: "立即體驗",
+    dismiss: "知道了",
+  },
 };

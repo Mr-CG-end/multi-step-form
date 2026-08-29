@@ -263,6 +263,8 @@ import type {
 
 const CONSENT_STORAGE_KEY = "multi-step-form-page-agent-consent-v2";
 const CONSENT_VERSION = "2";
+const GUIDE_STORAGE_KEY = "multi-step-form-page-agent-guide-v1";
+const GUIDE_VERSION = "1";
 
 const { t, locale } = useI18n();
 const store = useCommonsStore();
@@ -272,11 +274,13 @@ const { status, activityState, activity, load, stop, dispose } =
 
 const orbRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
+const guideRef = ref<HTMLElement | null>(null);
 const messagesRef = ref<HTMLElement | null>(null);
 const inputRef = ref<HTMLTextAreaElement | null>(null);
 const consentButtonRef = ref<HTMLButtonElement | null>(null);
 const isOpen = ref(false);
 const hasConsented = ref(false);
+const showGuide = ref(false);
 const command = ref("");
 const messages = ref<AssistantMessage[]>([]);
 const pendingIntent = ref<PartialFormIntent | undefined>();
@@ -338,7 +342,22 @@ const initializeConversation = () => {
   }
 };
 
+const dismissGuide = () => {
+  showGuide.value = false;
+  try {
+    localStorage.setItem(GUIDE_STORAGE_KEY, GUIDE_VERSION);
+  } catch {
+    // Storage is optional.
+  }
+};
+
+const experienceWithGuide = () => {
+  dismissGuide();
+  if (!isOpen.value) togglePanel();
+};
+
 const togglePanel = () => {
+  if (showGuide.value) dismissGuide();
   isOpen.value = !isOpen.value;
   if (isOpen.value) {
     if (hasConsented.value) initializeConversation();
@@ -365,7 +384,7 @@ const {
   onPointerUp,
   onPointerCancel,
   refreshPanelPosition,
-} = useDraggableAgentOrb(orbRef, panelRef, isOpen, togglePanel);
+} = useDraggableAgentOrb(orbRef, panelRef, isOpen, togglePanel, guideRef);
 
 const closePanel = () => {
   isOpen.value = false;
@@ -496,8 +515,14 @@ onMounted(() => {
   try {
     hasConsented.value =
       localStorage.getItem(CONSENT_STORAGE_KEY) === CONSENT_VERSION;
+    showGuide.value =
+      localStorage.getItem(GUIDE_STORAGE_KEY) !== GUIDE_VERSION;
   } catch {
     hasConsented.value = false;
+    showGuide.value = true;
+  }
+  if (showGuide.value) {
+    nextTick(() => refreshPanelPosition());
   }
   window.addEventListener("keydown", handleKeyDown);
 });
@@ -930,6 +955,214 @@ onUnmounted(() => {
   }
 }
 
+/* ================= 新手引导浮窗 (AI Onboarding Guide) ================= */
+.agent-onboarding-guide {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483002;
+  width: min(280px, calc(100vw - 84px));
+  pointer-events: auto;
+  contain: layout;
+  will-change: transform;
+}
+
+.guide-surface {
+  position: relative;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 16px 36px -6px rgba(2, 41, 90, 0.18),
+    0 4px 16px rgba(65, 62, 255, 0.08),
+    inset 0 1px 1.5px rgba(255, 255, 255, 1);
+  padding: 13px 14px 12px;
+  animation: guide-float 4.5s ease-in-out infinite;
+}
+
+.guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.guide-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4.5px;
+  padding: 2.5px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: "ubuntu-bold", sans-serif;
+  background: linear-gradient(
+    135deg,
+    rgba(65, 62, 255, 0.12) 0%,
+    rgba(0, 242, 254, 0.15) 100%
+  );
+  color: #413eff;
+  border: 1px solid rgba(65, 62, 255, 0.22);
+}
+
+.guide-badge svg {
+  width: 12px;
+  height: 12px;
+  color: #413eff;
+}
+
+.guide-close-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  transition: all 0.15s ease;
+}
+
+.guide-close-btn:hover {
+  color: #334155;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.guide-close-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.guide-body {
+  margin-bottom: 9px;
+}
+
+.guide-title {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--agent-navy);
+  font-family: "ubuntu-bold", sans-serif;
+  line-height: 1.35;
+}
+
+.guide-desc {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #64748b;
+  font-family: "ubuntu-regular", sans-serif;
+}
+
+.guide-footer {
+  display: flex;
+}
+
+.guide-action-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg, #02295a 0%, #174a89 100%);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: "ubuntu-medium", sans-serif;
+  box-shadow: 0 3px 10px rgba(2, 41, 90, 0.22);
+  transition:
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.guide-action-btn:hover {
+  background: linear-gradient(135deg, #174a89 0%, #413eff 100%);
+  box-shadow: 0 5px 14px rgba(65, 62, 255, 0.32);
+  transform: translateY(-1px);
+}
+
+.guide-action-btn:active {
+  transform: translateY(0);
+}
+
+.guide-action-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.guide-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+}
+
+.agent-onboarding-guide[data-placement="left"] .guide-arrow {
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  border-left: none;
+  border-bottom: none;
+}
+
+.agent-onboarding-guide[data-placement="right"] .guide-arrow {
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  border-right: none;
+  border-top: none;
+}
+
+.agent-onboarding-guide[data-placement="top"] .guide-arrow {
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%) rotate(45deg);
+  border-left: none;
+  border-top: none;
+}
+
+.agent-onboarding-guide[data-placement="bottom"] .guide-arrow {
+  left: 50%;
+  top: -5px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: none;
+  border-bottom: none;
+}
+
+.guide-fade-enter-active,
+.guide-fade-leave-active {
+  transition:
+    opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.guide-fade-enter-from,
+.guide-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+@keyframes guide-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
 @media (max-width: 600px) {
   .agent-panel-positioner {
     width: calc(100vw - 28px);
@@ -941,6 +1174,9 @@ onUnmounted(() => {
   .messages {
     max-height: min(330px, 42dvh);
   }
+  .agent-onboarding-guide {
+    width: calc(100vw - 84px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -949,6 +1185,9 @@ onUnmounted(() => {
   }
   .agent-panel-surface {
     animation: none;
+  }
+  .guide-surface {
+    animation: none !important;
   }
 }
 </style>

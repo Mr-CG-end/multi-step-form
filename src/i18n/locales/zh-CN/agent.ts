@@ -75,4 +75,11 @@ export default {
   notice: {
     localPrivacy: "个人资料只在本地处理；外部服务只接收套餐偏好和脱敏页面。",
   },
+  guide: {
+    badge: "AI 智能填表",
+    title: "支持一句话快速填表",
+    desc: "只需说出你的姓名和套餐偏好，AI 助手将自动为你完成多步表单！",
+    action: "立即体验",
+    dismiss: "知道了",
+  },
 };

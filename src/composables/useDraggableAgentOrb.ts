@@ -4,15 +4,6 @@ const STORAGE_KEY = "multi-step-form-agent-orb-position-v1";
 const ORB_SIZE = 56;
 const SAFE_MARGIN = 14;
 const DRAG_THRESHOLD = 6;
-const TRAIL_DISTANCE = 9;
-const POOL_SIZE = 32;
-const AURORA_GLOW_PAIRS = [
-  { primary: "rgba(0, 242, 254, 0.82)", secondary: "rgba(79, 172, 254, 0.5)" }, // 青蓝光晕 (Cyan & Azure)
-  { primary: "rgba(127, 0, 255, 0.78)", secondary: "rgba(255, 0, 127, 0.45)" }, // 幻紫光晕 (Violet & Magenta)
-  { primary: "rgba(255, 0, 127, 0.75)", secondary: "rgba(255, 158, 0, 0.45)" }, // 玫红光晕 (Magenta & Amber)
-  { primary: "rgba(0, 245, 160, 0.78)", secondary: "rgba(0, 217, 233, 0.48)" }, // 极光碧绿 (Emerald & Teal)
-  { primary: "rgba(255, 158, 0, 0.8)", secondary: "rgba(255, 0, 127, 0.42)" }, // 暖曜金橙 (Amber Gold)
-];
 
 interface Point {
   x: number;
@@ -28,9 +19,9 @@ interface StoredPosition {
 export function useDraggableAgentOrb(
   orbRef: Ref<HTMLElement | null>,
   panelRef: Ref<HTMLElement | null>,
-  trailLayerRef: Ref<HTMLElement | null>,
   isOpen: Ref<boolean>,
   onActivate: () => void,
+  guideRef?: Ref<HTMLElement | null>,
 ) {
   const isDragging = ref(false);
   const isPageHidden = ref(false);
@@ -40,14 +31,14 @@ export function useDraggableAgentOrb(
   let pointerId: number | null = null;
   let startPointer: Point = { x: 0, y: 0 };
   let startPosition: Point = { x: 0, y: 0 };
-  let lastTrailPoint: Point = { x: 0, y: 0 };
-  let previousPointer: Point = { x: 0, y: 0 };
   let frameId = 0;
   let pendingPosition: Point | null = null;
-  let particleIndex = 0;
-  let normalizedPosition: StoredPosition = { version: 1, xRatio: 1, yRatio: 0.82 };
+  let normalizedPosition: StoredPosition = {
+    version: 1,
+    xRatio: 1,
+    yRatio: 0.82,
+  };
   let panelSize: { width: number; height: number } | null = null;
-  const particles: HTMLElement[] = [];
 
   const viewportBounds = () => {
     const viewport = window.visualViewport;
@@ -79,6 +70,7 @@ export function useDraggableAgentOrb(
       orbRef.value.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
     }
     updatePanelPosition(false);
+    updateGuidePosition();
   };
 
   const schedulePosition = (next: Point) => {
@@ -120,8 +112,10 @@ export function useDraggableAgentOrb(
           parsed.version === 1 &&
           Number.isFinite(parsed.xRatio) &&
           Number.isFinite(parsed.yRatio) &&
-          (parsed.xRatio as number) >= 0 && (parsed.xRatio as number) <= 1 &&
-          (parsed.yRatio as number) >= 0 && (parsed.yRatio as number) <= 1
+          (parsed.xRatio as number) >= 0 &&
+          (parsed.xRatio as number) <= 1 &&
+          (parsed.yRatio as number) >= 0 &&
+          (parsed.yRatio as number) <= 1
         ) {
           xRatio = Math.min(1, Math.max(0, parsed.xRatio as number));
           yRatio = Math.min(1, Math.max(0, parsed.yRatio as number));
@@ -137,68 +131,16 @@ export function useDraggableAgentOrb(
     });
   };
 
-  const createParticlePool = () => {
-    const layer = trailLayerRef.value;
-    if (!layer || particles.length > 0) return;
-    for (let index = 0; index < POOL_SIZE; index += 1) {
-      const particle = document.createElement("span");
-      particle.className = "orb-smoke-particle";
-      particle.addEventListener("animationend", () => {
-        particle.classList.remove("is-active");
-      });
-      layer.appendChild(particle);
-      particles.push(particle);
-    }
-  };
-
-  const recycleParticles = () => {
-    particles.forEach((particle) => particle.classList.remove("is-active"));
-  };
-
-  const emitParticle = (point: Point, velocity: Point) => {
-    if (
-      particles.length === 0 ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      return;
-    }
-    const particle = particles[particleIndex % particles.length];
-    particleIndex += 1;
-    const seed = particleIndex * 37;
-    const pair = AURORA_GLOW_PAIRS[particleIndex % AURORA_GLOW_PAIRS.length];
-    const size = 42 + (seed % 16);
-    const angle = ((seed % 360) * Math.PI) / 180;
-    const spread = (seed % 12) - 6;
-    const speed = Math.hypot(velocity.x, velocity.y);
-    const damp = Math.min(1.2, Math.max(0.4, speed * 0.05));
-    const duration = 520 + (seed % 180);
-
-    particle.classList.remove("is-active");
-    void particle.offsetWidth;
-    particle.style.setProperty("--particle-x", `${point.x}px`);
-    particle.style.setProperty("--particle-y", `${point.y}px`);
-    particle.style.setProperty("--particle-color", pair.primary);
-    particle.style.setProperty("--particle-color-secondary", pair.secondary);
-    particle.style.setProperty("--particle-size", `${size}px`);
-    particle.style.setProperty(
-      "--particle-dx",
-      `${-velocity.x * damp + Math.cos(angle) * spread}px`,
-    );
-    particle.style.setProperty(
-      "--particle-dy",
-      `${-velocity.y * damp + Math.sin(angle) * spread}px`,
-    );
-    particle.style.setProperty("--particle-duration", `${duration}ms`);
-    particle.classList.add("is-active");
-  };
-
   function updatePanelPosition(measure = true): void {
     const panel = panelRef.value;
     if (!panel || !isOpen.value) return;
 
     const gap = 14;
     const viewport = viewportBounds();
-    panel.style.maxHeight = `${Math.max(0, viewport.height - SAFE_MARGIN * 2)}px`;
+    panel.style.maxHeight = `${Math.max(
+      0,
+      viewport.height - SAFE_MARGIN * 2,
+    )}px`;
     if (measure || !panelSize) {
       panelSize = {
         width: panel.offsetWidth || Math.min(360, viewport.width - 24),
@@ -219,10 +161,22 @@ export function useDraggableAgentOrb(
     };
 
     const candidates = [
-      { side: "left", fits: spaces.left >= panelWidth + gap, space: spaces.left },
-      { side: "right", fits: spaces.right >= panelWidth + gap, space: spaces.right },
+      {
+        side: "left",
+        fits: spaces.left >= panelWidth + gap,
+        space: spaces.left,
+      },
+      {
+        side: "right",
+        fits: spaces.right >= panelWidth + gap,
+        space: spaces.right,
+      },
       { side: "top", fits: spaces.top >= panelHeight + gap, space: spaces.top },
-      { side: "bottom", fits: spaces.bottom >= panelHeight + gap, space: spaces.bottom },
+      {
+        side: "bottom",
+        fits: spaces.bottom >= panelHeight + gap,
+        space: spaces.bottom,
+      },
     ];
     const selected =
       candidates.find((candidate) => candidate.fits) ||
@@ -254,12 +208,92 @@ export function useDraggableAgentOrb(
     panel.dataset.placement = selected.side;
   }
 
+  function updateGuidePosition(): void {
+    const guide = guideRef?.value;
+    if (!guide) return;
+
+    const gap = 14;
+    const viewport = viewportBounds();
+    const guideWidth = guide.offsetWidth || 280;
+    const guideHeight = guide.offsetHeight || 135;
+    const orbCenter = {
+      x: position.x + ORB_SIZE / 2,
+      y: position.y + ORB_SIZE / 2,
+    };
+    const bounds = {
+      left: viewport.minX,
+      right: viewport.minX + viewport.width - SAFE_MARGIN,
+      top: viewport.minY,
+      bottom: viewport.minY + viewport.height - SAFE_MARGIN,
+    };
+    const orbRect = {
+      left: position.x,
+      right: position.x + ORB_SIZE,
+      top: position.y,
+      bottom: position.y + ORB_SIZE,
+    };
+    const clamp = (value: number, min: number, max: number) =>
+      Math.min(Math.max(min, value), Math.max(min, max));
+    const candidates = [
+      {
+        placement: "left",
+        left: position.x - guideWidth - gap,
+        top: orbCenter.y - guideHeight / 2,
+      },
+      {
+        placement: "right",
+        left: position.x + ORB_SIZE + gap,
+        top: orbCenter.y - guideHeight / 2,
+      },
+      {
+        placement: "top",
+        left: orbCenter.x - guideWidth / 2,
+        top: position.y - guideHeight - gap,
+      },
+      {
+        placement: "bottom",
+        left: orbCenter.x - guideWidth / 2,
+        top: position.y + ORB_SIZE + gap,
+      },
+    ].map((candidate) => {
+      const left = clamp(candidate.left, bounds.left, bounds.right - guideWidth);
+      const top = clamp(candidate.top, bounds.top, bounds.bottom - guideHeight);
+      const overlaps =
+        left < orbRect.right &&
+        left + guideWidth > orbRect.left &&
+        top < orbRect.bottom &&
+        top + guideHeight > orbRect.top;
+      const gapAvailable =
+        candidate.placement === "left"
+          ? position.x - bounds.left >= guideWidth + gap
+          : candidate.placement === "right"
+            ? bounds.right - orbRect.right >= guideWidth + gap
+            : candidate.placement === "top"
+              ? position.y - bounds.top >= guideHeight + gap
+              : bounds.bottom - orbRect.bottom >= guideHeight + gap;
+      return { ...candidate, left, top, fits: !overlaps, preferred: !overlaps && gapAvailable };
+    });
+
+    const selected =
+      candidates.find((candidate) => candidate.preferred) ||
+      candidates.find((candidate) => candidate.fits) ||
+      candidates.sort((a, b) => {
+        const distance = (candidate: (typeof candidates)[number]) =>
+          Math.min(
+            Math.abs(candidate.left + guideWidth / 2 - orbCenter.x),
+            Math.abs(candidate.top + guideHeight / 2 - orbCenter.y),
+          );
+        return distance(b) - distance(a);
+      })[0];
+
+    guide.style.transform = `translate3d(${selected.left}px, ${selected.top}px, 0)`;
+    guide.dataset.placement = selected.placement;
+  }
+
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0 || pointerId !== null) return;
     pointerId = event.pointerId;
     startPointer = { x: event.clientX, y: event.clientY };
-    previousPointer = { ...startPointer };
-    lastTrailPoint = { ...startPointer };
     startPosition = { ...position };
     isDragging.value = false;
     orbRef.value?.setPointerCapture(event.pointerId);
@@ -271,27 +305,10 @@ export function useDraggableAgentOrb(
     const dy = event.clientY - startPointer.y;
     if (!isDragging.value && Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
       isDragging.value = true;
-      createParticlePool();
     }
     if (!isDragging.value) return;
     event.preventDefault();
     schedulePosition({ x: startPosition.x + dx, y: startPosition.y + dy });
-
-    const trailDistance = Math.hypot(
-      event.clientX - lastTrailPoint.x,
-      event.clientY - lastTrailPoint.y,
-    );
-    if (trailDistance >= TRAIL_DISTANCE) {
-      emitParticle(
-        { x: event.clientX, y: event.clientY },
-        {
-          x: event.clientX - previousPointer.x,
-          y: event.clientY - previousPointer.y,
-        },
-      );
-      lastTrailPoint = { x: event.clientX, y: event.clientY };
-    }
-    previousPointer = { x: event.clientX, y: event.clientY };
   };
 
   const finishPointer = (event: PointerEvent, cancelled = false) => {
@@ -305,7 +322,6 @@ export function useDraggableAgentOrb(
       applyPosition(pendingPosition);
       pendingPosition = null;
     }
-    recycleParticles();
     if (dragged) {
       savePosition();
       window.setTimeout(() => {
@@ -335,12 +351,12 @@ export function useDraggableAgentOrb(
     await nextTick();
     panelSize = null;
     updatePanelPosition();
+    updateGuidePosition();
   };
 
   onMounted(() => {
     onVisibilityChange();
     restorePosition();
-    createParticlePool();
     window.addEventListener("resize", onResize);
     window.visualViewport?.addEventListener("resize", onResize);
     window.visualViewport?.addEventListener("scroll", onResize);
@@ -353,8 +369,6 @@ export function useDraggableAgentOrb(
     window.visualViewport?.removeEventListener("scroll", onResize);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     if (frameId) window.cancelAnimationFrame(frameId);
-    particles.forEach((particle) => particle.remove());
-    particles.length = 0;
   });
 
   return {

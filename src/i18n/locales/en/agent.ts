@@ -75,4 +75,11 @@ export default {
   notice: {
     localPrivacy: "Personal details stay local; the external service receives only plan preferences and a redacted page.",
   },
+  guide: {
+    badge: "AI Auto-fill",
+    title: "Fill form in one prompt",
+    desc: "Tell AI your name and plan preferences to auto-complete the entire form in seconds!",
+    action: "Try it now",
+    dismiss: "Got it",
+  },
 };

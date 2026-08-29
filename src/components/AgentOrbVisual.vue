@@ -1,5 +1,8 @@
 <template>
-  <div class="aurora-orb-container" :class="[stateClass, { 'is-active': active }]">
+  <div
+    class="aurora-orb-container"
+    :class="[stateClass, { 'is-active': active }]"
+  >
     <!-- 外圈弥散彩色呼吸光晕 -->
     <div class="aurora-halo" aria-hidden="true"></div>
 
@@ -200,7 +203,12 @@ const stateClass = computed(() => `status-${props.state}`);
 /* 成功状态（翠绿-青蓝极光） */
 .status-completed .aurora-state-layer {
   opacity: 1;
-  background: radial-gradient(circle, #00f5a0 0%, #00d9e9 70%, transparent 100%);
+  background: radial-gradient(
+    circle,
+    #00f5a0 0%,
+    #00d9e9 70%,
+    transparent 100%
+  );
 }
 .status-completed .aurora-halo {
   background: conic-gradient(from 0deg, #00f5a0, #00d9e9, #67e8f9, #00f5a0);
@@ -209,7 +217,12 @@ const stateClass = computed(() => `status-${props.state}`);
 /* 错误状态（珊瑚粉红极光） */
 .status-error .aurora-state-layer {
   opacity: 1;
-  background: radial-gradient(circle, #ff416c 0%, #ff4b2b 75%, transparent 100%);
+  background: radial-gradient(
+    circle,
+    #ff416c 0%,
+    #ff4b2b 75%,
+    transparent 100%
+  );
 }
 .status-error .aurora-halo {
   background: conic-gradient(from 0deg, #ff416c, #ff4b2b, #ff758c, #ff416c);
@@ -217,13 +230,21 @@ const stateClass = computed(() => `status-${props.state}`);
 
 /* 关键帧动画 */
 @keyframes aurora-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes aurora-spin-reverse {
-  0% { transform: rotate(360deg) scale(0.95); }
-  100% { transform: rotate(0deg) scale(1.15); }
+  0% {
+    transform: rotate(360deg) scale(0.95);
+  }
+  100% {
+    transform: rotate(0deg) scale(1.15);
+  }
 }
 
 @keyframes aurora-pulse {
