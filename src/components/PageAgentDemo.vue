@@ -43,6 +43,73 @@
       </span>
     </button>
 
+    <!-- 新手引导气泡 (AI 智能填表提示浮窗) -->
+    <transition name="guide-fade">
+      <aside
+        v-if="showGuide && !isOpen"
+        id="page-agent-guide"
+        ref="guideRef"
+        class="agent-onboarding-guide"
+        :data-placement="panelPlacement"
+        role="complementary"
+        :aria-label="t('agent.guide.title')"
+      >
+        <div class="guide-surface">
+          <div class="guide-header">
+            <span class="guide-badge">
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M8 1.5l1.6 3.8L13.5 7 9.6 8.6 8 12.5 6.4 8.6 2.5 7l3.9-1.7L8 1.5z"
+                  fill="currentColor"
+                />
+              </svg>
+              {{ t("agent.guide.badge") }}
+            </span>
+            <button
+              type="button"
+              class="guide-close-btn"
+              :aria-label="t('agent.guide.dismiss')"
+              @click="dismissGuide"
+            >
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="m4 4 8 8M12 4 4 12"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div class="guide-body">
+            <h3 class="guide-title">{{ t("agent.guide.title") }}</h3>
+            <p class="guide-desc">{{ t("agent.guide.desc") }}</p>
+          </div>
+
+          <div class="guide-footer">
+            <button
+              type="button"
+              class="guide-action-btn"
+              @click="experienceWithGuide"
+            >
+              <span>{{ t("agent.guide.action") }}</span>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M3.5 8h9M9 4.5l3.5 3.5L9 11.5"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="guide-arrow" aria-hidden="true"></div>
+        </div>
+      </aside>
+    </transition>
+
     <section
       v-if="isOpen"
       id="page-agent-panel"
@@ -200,7 +267,7 @@ const CONSENT_VERSION = "2";
 const { t, locale } = useI18n();
 const store = useCommonsStore();
 const { applyAssistantProgress } = store;
-const { status, activityState, activity, load, execute, stop, dispose } =
+const { status, activityState, activity, load, stop, dispose } =
   usePageAgentDemo();
 
 const orbRef = ref<HTMLElement | null>(null);
@@ -327,46 +394,15 @@ const getConflictMessage = (codes: string[]): string => {
 const getClarificationQuestion = (field: ClarificationField): string =>
   String(t(`agent.clarification.${field}`));
 
-const formatIntentSummary = (
-  intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
-): string => {
-  const plan = String(t(`items.plans.${intent.plan}.name`));
-  const cycle = String(t(`common.period.${intent.billingCycle}`));
-  const addons = intent.addonIds.length
-    ? intent.addonIds
-        .map((id) => String(t(`items.addons.${id}.title`)))
-        .join(String(t("agent.chat.listSeparator")))
-    : String(t("form.summary.noAddons"));
-  return String(
-    t("agent.chat.confirmed", {
-      name: intent.personalInfo.name,
-      plan,
-      cycle,
-      addons,
-    }),
-  );
-};
-
-const runIntent = async (
+const runIntent = (
   intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
 ) => {
-  // 增量对话已经把所有字段填入汇总页时，不再重复清空并让远程
-  // Agent 重放一遍；预设的一次性完整指令仍会走 Page Agent 演示。
-  if (store.matchesAssistantIntent(intent)) {
-    appendMessage("assistant", "success", String(t("agent.chat.completed")));
-    return;
-  }
-  appendMessage("assistant", "activity", formatIntentSummary(intent));
+  // 所有字段已经通过本地校验后直接停在摘要页，避免完整一句话
+  // 又触发 prepareAssistantRun() 把表单重置到第 2 步。
+  store.applyAssistantIntent(intent);
   pendingIntent.value = undefined;
   clarificationField.value = undefined;
-  const result = await execute(intent, locale.value);
-  if (result.success && result.repaired) {
-    appendMessage("system", "warning", String(t("agent.chat.repaired")));
-  } else if (result.success) {
-    appendMessage("assistant", "success", String(t("agent.chat.completed")));
-  } else if (result.message !== "AGENT_STOPPED") {
-    appendMessage("assistant", "error", String(t("agent.chat.failed")));
-  }
+  appendMessage("assistant", "success", String(t("agent.chat.completed")));
 };
 
 const submitCommand = (value: string) => {
@@ -511,7 +547,7 @@ onUnmounted(() => {
 }
 
 .agent-orb:focus-visible {
-  outline: 3px solid rgba(65, 62, 255, 0.45);
+  outline: 3px solid rgba(127, 0, 255, 0.45);
   outline-offset: 4px;
 }
 
@@ -526,9 +562,9 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   pointer-events: none;
-  color: #02295a;
-  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.95))
-    drop-shadow(0 0 6px rgba(189, 226, 253, 0.9));
+  color: #ffffff;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4))
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.75));
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
