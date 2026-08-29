@@ -2,8 +2,8 @@ import { ref, reactive, watch, computed, onUnmounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useCommonsStore } from "@/stores/commons";
-import _ from "lodash";
 import { isValidEmail, isValidPhone } from "@/utils/validators";
+import { debounce } from "@/utils/debounce";
 
 export function usePersonalInfoValidation() {
   const { t } = useI18n();
@@ -19,10 +19,10 @@ export function usePersonalInfoValidation() {
   });
 
   // 300ms 延时防抖，保存引用以便 unmount 时取消
-  const debouncedSyncEmail = _.debounce((newValue: string) => {
+  const debouncedSyncEmail = debounce((newValue: string) => {
     debouncedInfo.email = newValue;
   }, 300);
-  const debouncedSyncPhone = _.debounce((newValue: string) => {
+  const debouncedSyncPhone = debounce((newValue: string) => {
     debouncedInfo.phone = newValue;
   }, 300);
 
@@ -38,7 +38,7 @@ export function usePersonalInfoValidation() {
   // ---- 验证 computed：每个字段独立返回 { valid, message } ----
 
   const nameValidation = computed(() => {
-    if (isSubmitted.value && _.isEmpty(personalInfo.value.name))
+    if (isSubmitted.value && !personalInfo.value.name.trim())
       return { valid: false, message: t("validation.required.name") };
     return { valid: true, message: "" };
   });
@@ -49,9 +49,9 @@ export function usePersonalInfoValidation() {
    * - 格式：基于防抖替身 debouncedInfo，减少频繁报错
    */
   const emailValidation = computed(() => {
-    if (isSubmitted.value && _.isEmpty(personalInfo.value.email))
+    if (isSubmitted.value && !personalInfo.value.email.trim())
       return { valid: false, message: t("validation.required.email") };
-    if (_.isEmpty(debouncedInfo.email)) return { valid: true, message: "" };
+    if (!debouncedInfo.email.trim()) return { valid: true, message: "" };
     if (!isValidEmail(debouncedInfo.email))
       return { valid: false, message: t("validation.format.email") };
     return { valid: true, message: "" };
@@ -63,9 +63,9 @@ export function usePersonalInfoValidation() {
    * - 格式验证
    */
   const phoneValidation = computed(() => {
-    if (isSubmitted.value && _.isEmpty(personalInfo.value.phone))
+    if (isSubmitted.value && !personalInfo.value.phone.trim())
       return { valid: false, message: t("validation.required.phone") };
-    if (_.isEmpty(debouncedInfo.phone)) return { valid: true, message: "" };
+    if (!debouncedInfo.phone.trim()) return { valid: true, message: "" };
     if (!isValidPhone(debouncedInfo.phone))
       return { valid: false, message: t("validation.format.phone") };
     return { valid: true, message: "" };

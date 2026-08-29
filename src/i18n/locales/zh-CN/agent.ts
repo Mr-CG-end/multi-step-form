@@ -29,6 +29,7 @@ export default {
     idle: "准备就绪",
     loading: "正在连接演示服务",
     running: "正在操作表单",
+    stopping: "正在停止并恢复原表单",
     completed: "已到达汇总页",
     stopped: "已停止并恢复原表单",
     error: "演示服务暂时不可用",

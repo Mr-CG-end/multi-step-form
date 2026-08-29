@@ -33,6 +33,9 @@ const NO_ADDONS_PATTERN =
   /(?:不(?:要|需要|选择|選擇|添加|加)(?:任何)?附加(?:服务|服務|项|項)?|无附加(?:服务|服務|项|項)?|沒有附加(?:服務|項目)?|no\s+add[- ]?ons?|without\s+(?:any\s+)?add[- ]?ons?)/i;
 const NEGATION_PREFIX =
   /(?:(?:不要|不需要|不想要|不选择|不選擇|不添加|不加入|别|別|请勿|請勿|取消|移除|去掉)(?:选择|選擇|添加|加入|勾选|勾選|要)?|(?:do\s+not|don't|dont|never)\s+(?:(?:add|select|include|choose|want)\s+)?|without|remove|exclude|no)\s*$/i;
+const NEGATION_TOKEN =
+  /(?:不要|不需要|不想要|不选择|不選擇|不添加|不加入|别|別|请勿|請勿|取消|移除|去掉|(?:do\s+not|don't|dont|never|without|remove|exclude|no)\b)\s*/gi;
+const CONTRAST_CONNECTOR = /(?:但是|但|可是|然而|不过|不過|\bbut\b|\bhowever\b|\bexcept\b)/gi;
 
 const cloneIntent = (source?: PartialFormIntent): PartialFormIntent => ({
   personalInfo: { ...(source?.personalInfo || {}) },
@@ -107,8 +110,27 @@ function findPatternMatches(input: string, pattern: RegExp): RegExpMatchArray[] 
 }
 
 function isNegatedMention(input: string, index: number): boolean {
-  const prefix = input.slice(Math.max(0, index - 32), index);
-  return NEGATION_PREFIX.test(prefix);
+  const prefix = input.slice(0, index);
+  const contrastMatches = Array.from(prefix.matchAll(CONTRAST_CONNECTOR));
+  const lastContrast = contrastMatches[contrastMatches.length - 1];
+  const clause = prefix.slice(
+    lastContrast?.index === undefined
+      ? 0
+      : lastContrast.index + lastContrast[0].length,
+  );
+
+  // A negation remains active across a same-clause conjunction ("不要 A 和 B"
+  // / "without A and B"), but punctuation or a contrast connector starts a
+  // new instruction. The fast prefix check preserves the existing behavior for
+  // direct mentions while the broader check handles grouped add-ons.
+  if (NEGATION_PREFIX.test(clause.slice(Math.max(0, clause.length - 32)))) {
+    return true;
+  }
+  const negationMatches = Array.from(clause.matchAll(NEGATION_TOKEN));
+  const negation = negationMatches[negationMatches.length - 1];
+  if (!negation || negation.index === undefined) return false;
+  const afterNegation = clause.slice(negation.index + negation[0].length);
+  return !/[,.!?;:，。！？；：]/.test(afterNegation);
 }
 
 function parseFocusedValue(

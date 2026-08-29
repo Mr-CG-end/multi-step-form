@@ -5,6 +5,7 @@ export type PageAgentDemoStatus =
   | "idle"
   | "loading"
   | "running"
+  | "stopping"
   | "completed"
   | "error"
   | "stopped";

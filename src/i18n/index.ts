@@ -12,9 +12,13 @@ const LOCAL_STORAGE_KEY = "multi-step-form-locale";
  * localstorage(本地储存) -> navigator.language(浏览器语言) -> default(默认)
  */
 const getStoredLocale = (): string => {
-  const storedLocale = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (storedLocale && ["en", "zh-CN", "zh-TW"].includes(storedLocale))
-    return storedLocale;
+  try {
+    const storedLocale = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (storedLocale && ["en", "zh-CN", "zh-TW"].includes(storedLocale))
+      return storedLocale;
+  } catch (error) {
+    console.error("读取语言偏好失败", error);
+  }
   const browserLocale = navigator.language;
   if (browserLocale.startsWith("zh-TW") || browserLocale.startsWith("zh-HK"))
     return "zh-TW";

@@ -98,6 +98,34 @@ test("removes a single add-on when the command uses an expanded negation", () =>
   assert.deepEqual(result.intent.addonIds, ["2"]);
 });
 
+test("applies a grouped negation to every connected add-on", () => {
+  const result = parseFormCommand("不要在线服务和云存储", {
+    baseIntent: {
+      personalInfo: {},
+      addonIds: ["1", "2", "3"],
+    },
+  });
+  assert.deepEqual(result.intent.addonIds, ["3"]);
+
+  const english = parseFormCommand("without online service and larger storage", {
+    baseIntent: {
+      personalInfo: {},
+      addonIds: ["1", "2", "3"],
+    },
+  });
+  assert.deepEqual(english.intent.addonIds, ["3"]);
+});
+
+test("resets grouped negation after a contrast connector", () => {
+  const result = parseFormCommand("不要在线服务和云存储，但是添加在线服务", {
+    baseIntent: {
+      personalInfo: {},
+      addonIds: ["1", "2", "3"],
+    },
+  });
+  assert.deepEqual(result.intent.addonIds, ["1", "3"]);
+});
+
 test("uses the last add-on mention for positive and negative conflicts", () => {
   const result = parseFormCommand(
     "Add online service and larger storage, but don't add online service",
@@ -174,7 +202,7 @@ const completeIntent = {
   plan: "2", billingCycle: "yearly", addonIds: ["2"],
 };
 
-function runtimeFixture(executeBehavior) {
+function runtimeFixture(executeBehavior, stopBehavior = () => Promise.resolve()) {
   global.document = {
     getElementById: () => null,
     createElement: () => ({ remove() {} }),
@@ -195,7 +223,7 @@ function runtimeFixture(executeBehavior) {
       agent = this;
     }
     execute(prompt) { return executeBehavior(prompt, this.config, store); }
-    stop() { return Promise.resolve(); }
+    stop() { return stopBehavior(); }
     dispose() {}
   }
   window.PageAgent = FakeAgent;
@@ -247,6 +275,33 @@ test("stopping restores the snapshot and ignores a late failed response", async 
   controls.dispose();
 });
 
+test("stopping stays locked until the remote agent has stopped", async () => {
+  let finishExecution;
+  let finishStop;
+  const { store, controls } = runtimeFixture(
+    () => new Promise((resolve) => { finishExecution = resolve; }),
+    () => new Promise((resolve) => { finishStop = resolve; }),
+  );
+  const before = store.createSnapshot();
+  const execution = controls.execute(completeIntent, "zh-CN");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controls.status.value, "running");
+
+  const stopping = controls.stop();
+  assert.equal(controls.status.value, "stopping");
+  assert.equal(store.nowTab, "2");
+  assert.equal(store.personalInfo.name, completeIntent.personalInfo.name);
+
+  finishStop();
+  await stopping;
+  assert.equal(controls.status.value, "stopped");
+  assert.deepEqual(store.createSnapshot(), before);
+
+  finishExecution({ success: false });
+  assert.equal((await execution).message, "AGENT_STOPPED");
+  controls.dispose();
+});
+
 test("stopping during script loading cannot later trigger a local fallback", async () => {
   const { store, controls } = runtimeFixture(() => Promise.resolve({ success: false }));
   window.PageAgent = undefined;
@@ -257,4 +312,33 @@ test("stopping during script loading cannot later trigger a local fallback", asy
   assert.equal((await execution).message, "AGENT_STOPPED");
   assert.deepEqual(store.createSnapshot(), before);
   controls.dispose();
+});
+
+test("ignores persisted state with invalid enums or malformed structure", () => {
+  const { piniaPersistedState } = require("../src/plugins/piniaPersistedState.ts");
+  let saved = JSON.stringify({
+    timestamp: Date.now(),
+    state: {
+      nowTab: "9",
+      personalInfo: { name: "", email: "", phone: "" },
+      plan: "1",
+      addonIds: [],
+      isYearly: false,
+      completedSteps: [],
+    },
+  });
+  global.localStorage = {
+    getItem() { return saved; },
+    removeItem() { saved = null; },
+    setItem() {},
+  };
+  const patched = [];
+  const store = {
+    $id: "commonsStore",
+    $patch(state) { patched.push(state); },
+    $subscribe() {},
+  };
+  piniaPersistedState({ store });
+  assert.equal(saved, null);
+  assert.equal(patched.length, 0);
 });

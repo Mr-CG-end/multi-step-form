@@ -29,6 +29,7 @@ export default {
     idle: "Ready",
     loading: "Connecting to the demo service",
     running: "Operating the form",
+    stopping: "Stopping and restoring the form",
     completed: "Summary reached",
     stopped: "Stopped and restored",
     error: "Demo service unavailable",

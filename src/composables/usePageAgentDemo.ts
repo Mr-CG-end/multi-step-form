@@ -122,12 +122,15 @@ function mapActivityState(detail: IPageAgentActivity): AgentActivityState {
 }
 
 const handleAgentStatus: EventListener = () => {
-  if (status.value === "stopped") return;
+  if (status.value === "stopped" || status.value === "stopping") return;
   if (currentAgent?.status === "running") status.value = "running";
   if (currentAgent?.status === "stopped") status.value = "stopped";
   if (currentAgent?.status === "error") status.value = "error";
   removeOfficialPanel();
 };
+
+const isExecutionStopped = (): boolean =>
+  status.value === "stopped" || status.value === "stopping";
 
 const handleAgentActivity: EventListener = (event) => {
   const detail = (event as CustomEvent<IPageAgentActivity>).detail;
@@ -325,7 +328,10 @@ async function execute(
     const result = await currentAgent.execute(buildTaskPrompt(intent, locale));
     removeOfficialPanel();
 
-    if (version !== executionVersion || (status.value as PageAgentDemoStatus) === "stopped") {
+    if (
+      version !== executionVersion ||
+      isExecutionStopped()
+    ) {
       return { success: false, message: "AGENT_STOPPED", repaired: false };
     }
     if (result.success && store.matchesAssistantIntent(intent)) {
@@ -347,7 +353,10 @@ async function execute(
     activeIntent = null;
     return { success: true, message: "AGENT_RESULT_REPAIRED", repaired: true };
   } catch {
-    if (version !== executionVersion || (status.value as PageAgentDemoStatus) === "stopped") {
+    if (
+      version !== executionVersion ||
+      isExecutionStopped()
+    ) {
       return { success: false, message: "AGENT_STOPPED", repaired: false };
     }
     locallyComplete(intent);
@@ -369,7 +378,9 @@ async function stop(): Promise<void> {
     cancelScriptLoad?.();
     loadPromise = null;
   }
-  status.value = "stopped";
+  // Keep the transaction active while the remote agent is stopping. The UI
+  // uses this state to prevent a new command from racing the restoration.
+  status.value = "stopping";
   try {
     await currentAgent?.stop();
   } catch {
@@ -380,6 +391,7 @@ async function stop(): Promise<void> {
   activeSnapshot = null;
   activeIntent = null;
   activityState.value = "idle";
+  status.value = "stopped";
   removeOfficialPanel();
 }
 
