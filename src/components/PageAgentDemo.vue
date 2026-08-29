@@ -109,7 +109,7 @@
                 :key="preset"
                 type="button"
                 :disabled="isRunning"
-                @click="submitCommand(preset)"
+                @click="usePreset(preset)"
               >
                 {{ preset }}
               </button>
@@ -390,6 +390,12 @@ const submitCommand = (value: string) => {
 
 const submitCurrentCommand = () => submitCommand(command.value);
 
+const usePreset = (value: string) => {
+  if (isRunning.value) return;
+  command.value = value;
+  nextTick(() => inputRef.value?.focus());
+};
+
 const handleCommandKeydown = (event: KeyboardEvent) => {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
   event.preventDefault();
@@ -470,30 +476,36 @@ onUnmounted(() => {
   --particle-y: 0px;
   --particle-dx: 0px;
   --particle-dy: 0px;
-  --particle-color: rgba(0, 242, 254, 0.9);
-  --particle-size: 10px;
-  --particle-duration: 420ms;
+  --particle-color: rgba(0, 242, 254, 0.82);
+  --particle-color-secondary: rgba(79, 172, 254, 0.5);
+  --particle-size: 48px;
+  --particle-duration: 600ms;
   position: fixed;
   top: 0;
   left: 0;
   width: var(--particle-size);
   height: var(--particle-size);
+  margin-top: calc(var(--particle-size) * -0.5);
+  margin-left: calc(var(--particle-size) * -0.5);
   border-radius: 50%;
   opacity: 0;
   pointer-events: none;
+  mix-blend-mode: screen;
   background: radial-gradient(
     circle,
-    #ffffff 0%,
-    var(--particle-color) 45%,
+    rgba(255, 255, 255, 0.95) 0%,
+    var(--particle-color) 32%,
+    var(--particle-color-secondary) 64%,
     transparent 85%
   );
-  box-shadow: 0 0 10px var(--particle-color);
-  filter: blur(0.5px);
-  transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.6);
+  box-shadow: 0 0 24px var(--particle-color);
+  filter: blur(10px);
+  transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.7);
+  will-change: transform, opacity, filter;
 }
 
 :deep(.orb-smoke-particle.is-active) {
-  animation: stardust-trail var(--particle-duration) cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+  animation: aurora-haze-trail var(--particle-duration) cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .agent-orb {
@@ -560,6 +572,7 @@ onUnmounted(() => {
   left: 0;
   width: min(370px, calc(100vw - 28px));
   max-height: min(620px, calc(100dvh - 28px));
+  box-sizing: border-box;
   z-index: 2147483002;
   pointer-events: auto !important;
   will-change: transform;
@@ -568,14 +581,17 @@ onUnmounted(() => {
 .agent-panel-surface {
   display: flex;
   flex-direction: column;
+  width: 100%;
   max-height: inherit;
+  box-sizing: border-box;
   overflow: hidden;
   background: rgba(251, 252, 255, 0.96);
   border: 1px solid rgba(23, 74, 137, 0.14);
   border-radius: 20px;
   box-shadow: 0 20px 46px rgba(2, 41, 90, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
   transform-origin: right center;
+  will-change: transform, opacity;
   animation: panel-gather 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -782,15 +798,20 @@ onUnmounted(() => {
 .is-page-hidden *::before,
 .is-page-hidden *::after { animation-play-state: paused !important; }
 
-@keyframes stardust-trail {
+@keyframes aurora-haze-trail {
   0% {
-    opacity: 0.95;
-    transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(1);
-    filter: blur(0.5px) brightness(1.3);
+    opacity: 0.88;
+    transform: translate3d(var(--particle-x), var(--particle-y), 0) scale(0.8);
+    filter: blur(8px) brightness(1.25);
   }
-  50% {
-    opacity: 0.7;
-    filter: blur(1px) brightness(1.1);
+  38% {
+    opacity: 0.65;
+    filter: blur(14px) brightness(1.1);
+    transform: translate3d(
+      calc(var(--particle-x) + var(--particle-dx) * 0.45),
+      calc(var(--particle-y) + var(--particle-dy) * 0.45),
+      0
+    ) scale(1.22);
   }
   100% {
     opacity: 0;
@@ -798,18 +819,19 @@ onUnmounted(() => {
       calc(var(--particle-x) + var(--particle-dx)),
       calc(var(--particle-y) + var(--particle-dy)),
       0
-    ) scale(0.1);
-    filter: blur(2.5px);
+    ) scale(1.65);
+    filter: blur(24px) brightness(0.9);
   }
 }
 @keyframes panel-gather {
-  from { opacity: 0; transform: scale(0.88); filter: blur(6px); }
-  to { opacity: 1; transform: scale(1); filter: blur(0); }
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
 }
 @keyframes status-breathe { 50% { transform: scale(1.35); opacity: 0.45; } }
 
 @media (max-width: 600px) {
   .agent-panel-positioner { width: calc(100vw - 28px); max-height: calc(100dvh - 28px); }
+  .agent-panel-surface { border-radius: 16px; }
   .messages { max-height: min(330px, 42dvh); }
 }
 

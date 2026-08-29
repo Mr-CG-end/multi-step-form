@@ -4,14 +4,14 @@ const STORAGE_KEY = "multi-step-form-agent-orb-position-v1";
 const ORB_SIZE = 56;
 const SAFE_MARGIN = 14;
 const DRAG_THRESHOLD = 6;
-const TRAIL_DISTANCE = 7;
-const POOL_SIZE = 28;
-const AURORA_COLORS = [
-  "rgba(0, 242, 254, 0.9)",   // Cyan
-  "rgba(127, 0, 255, 0.9)",   // Violet
-  "rgba(255, 0, 127, 0.9)",   // Magenta
-  "rgba(79, 172, 254, 0.9)",  // Azure
-  "rgba(255, 179, 0, 0.9)",   // Amber Gold
+const TRAIL_DISTANCE = 9;
+const POOL_SIZE = 32;
+const AURORA_GLOW_PAIRS = [
+  { primary: "rgba(0, 242, 254, 0.82)", secondary: "rgba(79, 172, 254, 0.5)" }, // 青蓝光晕 (Cyan & Azure)
+  { primary: "rgba(127, 0, 255, 0.78)", secondary: "rgba(255, 0, 127, 0.45)" }, // 幻紫光晕 (Violet & Magenta)
+  { primary: "rgba(255, 0, 127, 0.75)", secondary: "rgba(255, 158, 0, 0.45)" }, // 玫红光晕 (Magenta & Amber)
+  { primary: "rgba(0, 245, 160, 0.78)", secondary: "rgba(0, 217, 233, 0.48)" }, // 极光碧绿 (Emerald & Teal)
+  { primary: "rgba(255, 158, 0, 0.8)", secondary: "rgba(255, 0, 127, 0.42)" }, // 暖曜金橙 (Amber Gold)
 ];
 
 interface Point {
@@ -164,20 +164,21 @@ export function useDraggableAgentOrb(
     }
     const particle = particles[particleIndex % particles.length];
     particleIndex += 1;
-    const seed = particleIndex * 31;
-    const color = AURORA_COLORS[particleIndex % AURORA_COLORS.length];
-    const size = 6 + (seed % 10);
+    const seed = particleIndex * 37;
+    const pair = AURORA_GLOW_PAIRS[particleIndex % AURORA_GLOW_PAIRS.length];
+    const size = 42 + (seed % 16);
     const angle = ((seed % 360) * Math.PI) / 180;
-    const spread = (seed % 10) - 5;
+    const spread = (seed % 12) - 6;
     const speed = Math.hypot(velocity.x, velocity.y);
-    const damp = Math.min(1.4, Math.max(0.5, speed * 0.07));
-    const duration = 380 + (seed % 160);
+    const damp = Math.min(1.2, Math.max(0.4, speed * 0.05));
+    const duration = 520 + (seed % 180);
 
     particle.classList.remove("is-active");
     void particle.offsetWidth;
     particle.style.setProperty("--particle-x", `${point.x}px`);
     particle.style.setProperty("--particle-y", `${point.y}px`);
-    particle.style.setProperty("--particle-color", color);
+    particle.style.setProperty("--particle-color", pair.primary);
+    particle.style.setProperty("--particle-color-secondary", pair.secondary);
     particle.style.setProperty("--particle-size", `${size}px`);
     particle.style.setProperty(
       "--particle-dx",
