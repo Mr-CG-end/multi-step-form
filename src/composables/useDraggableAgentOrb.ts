@@ -26,6 +26,7 @@ export function useDraggableAgentOrb(
   const isDragging = ref(false);
   const isPageHidden = ref(false);
   const panelPlacement = ref("left");
+  const guidePlacement = ref("left");
 
   let position: Point = { x: 0, y: 0 };
   let pointerId: number | null = null;
@@ -288,6 +289,7 @@ export function useDraggableAgentOrb(
 
     guide.style.transform = `translate3d(${selected.left}px, ${selected.top}px, 0)`;
     guide.dataset.placement = selected.placement;
+    guidePlacement.value = selected.placement;
   }
 
   const onPointerDown = (event: PointerEvent) => {
@@ -375,6 +377,7 @@ export function useDraggableAgentOrb(
     isDragging,
     isPageHidden,
     panelPlacement,
+    guidePlacement,
     onPointerDown,
     onPointerMove,
     onPointerUp: finishPointer,

@@ -25,14 +25,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, type PropType } from "vue";
 import type { PageAgentDemoStatus } from "@/types/page-agent";
 
-const props = defineProps<{
-  state: PageAgentDemoStatus;
-  paused: boolean;
-  active: boolean;
-}>();
+const props = defineProps({
+  state: {
+    type: String as PropType<PageAgentDemoStatus>,
+    required: true,
+  },
+  paused: {
+    type: Boolean,
+    default: false,
+  },
+  active: {
+    type: Boolean,
+    default: false,
+  },
+});
 
 const stateClass = computed(() => `status-${props.state}`);
 </script>

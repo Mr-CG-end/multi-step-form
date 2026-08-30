@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { IPersonal } from "@/types/items";
 import { clearPersistedState } from "@/plugins/piniaPersistedState";
 import { ref } from "vue";
+import { isValidEmail, isValidPhone } from "@/utils/validators";
 import type {
   CommonsSnapshot,
   FormIntent,
@@ -90,8 +91,8 @@ export const useCommonsStore = defineStore("commonsStore", () => {
 
     const hasPersonalInfo =
       Boolean(personalInfo.value.name.trim()) &&
-      Boolean(personalInfo.value.email.trim()) &&
-      Boolean(personalInfo.value.phone.trim());
+      isValidEmail(personalInfo.value.email) &&
+      isValidPhone(personalInfo.value.phone);
     if (hasPersonalInfo) addCompletedStep("1");
     if (hasPersonalInfo && intent.plan !== undefined && intent.billingCycle) {
       addCompletedStep("2");

@@ -46,11 +46,11 @@
     <!-- 新手引导气泡 (AI 智能填表提示浮窗) -->
     <transition name="guide-fade">
       <aside
-        v-if="showGuide && !isOpen"
+        v-if="isGuideVisible"
         id="page-agent-guide"
         ref="guideRef"
         class="agent-onboarding-guide"
-        :data-placement="panelPlacement"
+        :data-placement="guidePlacement"
         role="complementary"
         :aria-label="t('agent.guide.title')"
       >
@@ -222,7 +222,7 @@
               <button
                 type="submit"
                 class="send-button"
-                :disabled="!command.trim() || isRunning"
+                :disabled="isSendDisabled"
                 :aria-label="t('agent.custom.execute')"
               >
                 <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -247,19 +247,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import AgentOrbVisual from "@/components/AgentOrbVisual.vue";
 import { useCommonsStore } from "@/stores/commons";
 import { usePageAgentDemo } from "@/composables/usePageAgentDemo";
 import { useDraggableAgentOrb } from "@/composables/useDraggableAgentOrb";
-import {
-  parseFormCommand,
-  toCompleteFormIntent,
-} from "@/utils/formCommandParser";
 import type {
   AssistantMessage,
   ClarificationField,
   PartialFormIntent,
 } from "@/types/form-assistant";
+import {
+  parseFormCommand,
+  toCompleteFormIntent,
+} from "@/utils/formCommandParser";
+import AgentOrbVisual from "@/components/AgentOrbVisual.vue";
 
 const CONSENT_STORAGE_KEY = "multi-step-form-page-agent-consent-v2";
 const CONSENT_VERSION = "2";
@@ -269,12 +269,10 @@ const GUIDE_VERSION = "1";
 const { t, locale } = useI18n();
 const store = useCommonsStore();
 const { applyAssistantProgress } = store;
-const { status, activityState, activity, load, stop, dispose } =
+const { status, activityState, activity, load, execute, stop, dispose } =
   usePageAgentDemo();
 
-// The visible UI can change language without interrupting the Agent. The
-// runtime is reconciled lazily by execute(..., locale) before the next task, so a
-// rapid locale switch never enters a stop/reload race.
+// 界面语言切换时不会中断 Agent，下次任务执行前会按需对齐语言环境，避免快速切换语言引发竞争
 
 const orbRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
@@ -298,6 +296,10 @@ const isRunning = computed(
     status.value === "stopping",
 );
 const isStopping = computed(() => status.value === "stopping");
+const isGuideVisible = computed(() => showGuide.value && !isOpen.value);
+const isSendDisabled = computed(
+  () => !command.value.trim() || isRunning.value,
+);
 const showPresets = computed(
   () => messages.value.length <= 1 && !pendingIntent.value && !isRunning.value,
 );
@@ -351,7 +353,7 @@ const dismissGuide = () => {
   try {
     localStorage.setItem(GUIDE_STORAGE_KEY, GUIDE_VERSION);
   } catch {
-    // Storage is optional.
+    // 本地存储为可选功能，异常时静默降级
   }
 };
 
@@ -364,7 +366,12 @@ const togglePanel = () => {
   if (showGuide.value) dismissGuide();
   isOpen.value = !isOpen.value;
   if (isOpen.value) {
-    if (hasConsented.value) initializeConversation();
+    if (hasConsented.value) {
+      initializeConversation();
+      load(locale.value).catch(() => {
+        // 若演示服务不可用，后续执行有本地降级保底
+      });
+    }
     refreshPanelPosition();
     nextTick(() => {
       if (hasConsented.value) inputRef.value?.focus();
@@ -373,8 +380,7 @@ const togglePanel = () => {
   }
 };
 
-// Pointer activation is handled by the drag threshold; native keyboard and
-// assistive-technology clicks have no pointer click count.
+// 指针激活由拖拽阈值处理；原生键盘和无障碍辅助点击的 pointer click count 为 0
 const onOrbClick = (event: MouseEvent) => {
   if (event.detail === 0) togglePanel();
 };
@@ -383,6 +389,7 @@ const {
   isDragging,
   isPageHidden,
   panelPlacement,
+  guidePlacement,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -400,11 +407,11 @@ const agreeConsent = () => {
   try {
     localStorage.setItem(CONSENT_STORAGE_KEY, CONSENT_VERSION);
   } catch {
-    // Consent still applies for the current session.
+    // 本次会话同意仍旧生效
   }
   initializeConversation();
   load(locale.value).catch(() => {
-    // Execution has a local fallback if the demo service is unavailable.
+    // 若演示服务不可用，后续执行有本地降级保底
   });
   nextTick(() => inputRef.value?.focus());
 };
@@ -417,15 +424,50 @@ const getConflictMessage = (codes: string[]): string => {
 const getClarificationQuestion = (field: ClarificationField): string =>
   String(t(`agent.clarification.${field}`));
 
-const runIntent = (
+const formatIntentSummary = (
   intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
+): string => {
+  const plan = String(t(`items.plans.${intent.plan}.name`));
+  const cycle = String(t(`common.period.${intent.billingCycle}`));
+  const addons = intent.addonIds.length
+    ? intent.addonIds
+        .map((id) => String(t(`items.addons.${id}.title`)))
+        .join(String(t("agent.chat.listSeparator")))
+    : String(t("form.summary.noAddons"));
+  return String(
+    t("agent.chat.confirmed", {
+      name: intent.personalInfo.name,
+      plan,
+      cycle,
+      addons,
+    }),
+  );
+};
+
+const runIntent = async (
+  intent: NonNullable<ReturnType<typeof toCompleteFormIntent>>,
+  alreadyApplied = false,
 ) => {
-  // 所有字段已经通过本地校验后直接停在摘要页，避免完整一句话
-  // 又触发 prepareAssistantRun() 把表单重置到第 2 步。
-  store.applyAssistantIntent(intent);
+  // 增量对话若已经把相同意图应用到 Store，重复确认只需本地完成；
+  // 新的完整意图必须交给 Page Agent 执行，才能展示运行、停止和修复状态。
+  if (alreadyApplied) {
+    pendingIntent.value = undefined;
+    clarificationField.value = undefined;
+    appendMessage("assistant", "success", String(t("agent.chat.completed")));
+    return;
+  }
+
+  appendMessage("assistant", "activity", formatIntentSummary(intent));
   pendingIntent.value = undefined;
   clarificationField.value = undefined;
-  appendMessage("assistant", "success", String(t("agent.chat.completed")));
+  const result = await execute(intent, locale.value);
+  if (result.success && result.repaired) {
+    appendMessage("system", "warning", String(t("agent.chat.repaired")));
+  } else if (result.success) {
+    appendMessage("assistant", "success", String(t("agent.chat.completed")));
+  } else if (result.message !== "AGENT_STOPPED") {
+    appendMessage("assistant", "error", String(t("agent.chat.failed")));
+  }
 };
 
 const submitCommand = (value: string) => {
@@ -441,9 +483,6 @@ const submitCommand = (value: string) => {
   });
 
   pendingIntent.value = result.intent;
-  if (result.conflictCodes.length === 0) {
-    applyAssistantProgress(result.intent);
-  }
   if (result.status === "invalid") {
     appendMessage(
       "assistant",
@@ -454,8 +493,15 @@ const submitCommand = (value: string) => {
 
   const completeIntent = toCompleteFormIntent(result);
   if (completeIntent) {
-    runIntent(completeIntent);
+    // Compare before applying progress; otherwise every complete request would
+    // look pre-applied and incorrectly skip the Page Agent executor.
+    const alreadyApplied = store.matchesAssistantIntent(completeIntent);
+    void runIntent(completeIntent, alreadyApplied);
     return;
+  }
+
+  if (result.conflictCodes.length === 0) {
+    applyAssistantProgress(result.intent);
   }
 
   const conflictField = result.conflictCodes.includes("MULTIPLE_PLANS")
@@ -478,8 +524,7 @@ const submitCurrentCommand = () => submitCommand(command.value);
 
 const usePreset = (value: string) => {
   if (isRunning.value) return;
-  command.value = value;
-  nextTick(() => inputRef.value?.focus());
+  submitCommand(value);
 };
 
 const handleCommandKeydown = (event: KeyboardEvent) => {

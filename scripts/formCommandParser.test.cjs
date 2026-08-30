@@ -156,6 +156,52 @@ test("reuses valid local personal information", () => {
   assert.equal(toCompleteFormIntent(result).personalInfo.name, "顾言");
 });
 
+test("rejects malformed email replacements instead of reusing old values", () => {
+  const existingResult = parseFormCommand(
+    "我叫新用户，邮箱 bad@，手机 138 0000 0000，选择年度专业版，不要附加服务。",
+    {
+      existingPersonalInfo: {
+        name: "旧用户",
+        email: "old@example.com",
+        phone: "13900000000",
+      },
+    },
+  );
+  assert.equal(existingResult.status, "invalid");
+  assert.equal(existingResult.conflictCodes.includes("INVALID_EMAIL"), true);
+  assert.equal(existingResult.intent.personalInfo.email, undefined);
+  assert.equal(toCompleteFormIntent(existingResult), null);
+
+  const punctuatedResult = parseFormCommand("邮箱：bad@，选择年度专业版，不要附加服务。", {
+    existingPersonalInfo: {
+      name: "旧用户",
+      email: "old@example.com",
+      phone: "13900000000",
+    },
+  });
+  assert.equal(punctuatedResult.status, "invalid");
+  assert.equal(punctuatedResult.conflictCodes.includes("INVALID_EMAIL"), true);
+  assert.equal(punctuatedResult.intent.personalInfo.email, undefined);
+
+  const baseResult = parseFormCommand("bad@", {
+    baseIntent: {
+      personalInfo: {
+        name: "已有用户",
+        email: "base@example.com",
+        phone: "13800000000",
+      },
+      plan: "3",
+      billingCycle: "yearly",
+      addonIds: [],
+    },
+    focusField: "email",
+  });
+  assert.equal(baseResult.status, "invalid");
+  assert.equal(baseResult.conflictCodes.includes("INVALID_EMAIL"), true);
+  assert.equal(baseResult.intent.personalInfo.email, undefined);
+  assert.equal(toCompleteFormIntent(baseResult), null);
+});
+
 test("accumulates one detail at a time even when answers arrive out of order", () => {
   let result = parseFormCommand("专业版", { focusField: "name" });
   assert.equal(result.intent.plan, "3");
@@ -197,6 +243,56 @@ test("accumulates one detail at a time even when answers arrive out of order", (
 const { createPinia, setActivePinia } = require("pinia");
 const { useCommonsStore } = require("../src/stores/commons.ts");
 const { usePageAgentDemo } = require("../src/composables/usePageAgentDemo.ts");
+
+test("assistant progress does not advance with non-empty invalid contact data", () => {
+  for (const [field, value] of [
+    ["email", "not-an-email"],
+    ["phone", "12345"],
+  ]) {
+    setActivePinia(createPinia());
+    const store = useCommonsStore();
+    store.personalInfo.name = "顾言";
+    store.personalInfo.email =
+      field === "email" ? value : "guyan@example.com";
+    store.personalInfo.phone =
+      field === "phone" ? value : "13800000000";
+
+    store.applyAssistantProgress({
+      personalInfo: {},
+      plan: "3",
+      billingCycle: "yearly",
+      addonIds: [],
+    });
+
+    assert.equal(store.nowTab, "1", `invalid ${field} must stay on Step 1`);
+    assert.deepEqual(
+      store.completedSteps,
+      [],
+      `invalid ${field} must not mark any step complete`,
+    );
+  }
+});
+
+test("assistant progress advances with valid contact data", () => {
+  setActivePinia(createPinia());
+  const store = useCommonsStore();
+  store.personalInfo = {
+    name: "顾言",
+    email: "guyan@example.com",
+    phone: "13800000000",
+  };
+
+  store.applyAssistantProgress({
+    personalInfo: {},
+    plan: "3",
+    billingCycle: "yearly",
+    addonIds: [],
+  });
+
+  assert.equal(store.nowTab, "4");
+  assert.deepEqual(store.completedSteps, ["1", "2", "3"]);
+});
+
 const completeIntent = {
   personalInfo: { name: "苏澄", email: "sucheng@example.com", phone: "13800000000" },
   plan: "2", billingCycle: "yearly", addonIds: ["2"],

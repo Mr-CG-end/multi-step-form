@@ -36,6 +36,10 @@ const NEGATION_PREFIX =
 const NEGATION_TOKEN =
   /(?:不要|不需要|不想要|不选择|不選擇|不添加|不加入|别|別|请勿|請勿|取消|移除|去掉|(?:do\s+not|don't|dont|never|without|remove|exclude|no)\b)\s*/gi;
 const CONTRAST_CONNECTOR = /(?:但是|但|可是|然而|不过|不過|\bbut\b|\bhowever\b|\bexcept\b)/gi;
+const EMAIL_LABEL_PATTERN = /(?:邮箱|郵箱|电子邮件|電子郵件|\be[-\s]?mail\b)/iu;
+const EMAIL_LIKE_TOKEN_PATTERN = /(?:^|[\s,:：=])\S*@\S*/u;
+const EMAIL_PROMPT_PATTERN =
+  /^(?:(?:请|請|please)\s*)?(?:(?:提供|輸入|输入|填写|填寫|选择|選擇|provide|enter|type|choose|select)\s*)?(?:(?:你的|您的|我的|your|my)\s*)?(?:邮箱|郵箱|电子邮件|電子郵件|\be[-\s]?mail\b)(?:地址|address)?[。.!！？?？:：\s]*$/iu;
 
 const cloneIntent = (source?: PartialFormIntent): PartialFormIntent => ({
   personalInfo: { ...(source?.personalInfo || {}) },
@@ -88,6 +92,40 @@ function extractName(input: string, focusField?: ClarificationField): string | u
 
 function extractEmail(input: string): string | undefined {
   return input.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+}
+
+function hasMalformedEmailAttempt(
+  input: string,
+  focusField: ClarificationField | undefined,
+  extractedEmail: string | undefined,
+): boolean {
+  // A successfully extracted address is always preferred over the malformed
+  // attempt check. This also avoids flagging a command that mentions a valid
+  // address elsewhere in the sentence.
+  if (extractedEmail) return false;
+
+  if (focusField === "email") {
+    // While asking for an email, any non-empty answer is an explicit attempt.
+    // Keep assistant prompt-like text out of the invalid path so it can still
+    // be treated as a missing value.
+    return Boolean(input.trim()) && !EMAIL_PROMPT_PATTERN.test(input.trim());
+  }
+
+  // An @-containing token is a strong signal that the user attempted to
+  // replace an address, even when they omitted the email label entirely.
+  if (EMAIL_LIKE_TOKEN_PATTERN.test(input)) return true;
+
+  const label = input.match(EMAIL_LABEL_PATTERN);
+  if (!label || label.index === undefined) return false;
+
+  // Outside the focused field, require an @ token after an email label. This
+  // distinguishes a malformed replacement ("email bad@") from instructions
+  // such as "please provide an email" or "选择邮箱".
+  const clause = input
+    .slice(label.index + label[0].length)
+    .replace(/^[\s:=：]+/u, "")
+    .split(/[,.!?;:，。！？；：\n]/u)[0];
+  return clause.includes("@");
 }
 
 function extractPhone(input: string): string | undefined {
@@ -169,6 +207,11 @@ export function parseFormCommand(
   const name = extractName(input, focusField);
   const email = extractEmail(input);
   const phone = extractPhone(input);
+  const malformedEmailAttempt = hasMalformedEmailAttempt(
+    input,
+    focusField,
+    email,
+  );
   if (name) intent.personalInfo.name = name;
   if (email) intent.personalInfo.email = email;
   if (phone) intent.personalInfo.phone = phone;
@@ -223,8 +266,17 @@ export function parseFormCommand(
   if (!intent.personalInfo.name && existing?.name.trim()) {
     intent.personalInfo.name = existing.name.trim();
   }
+  if (malformedEmailAttempt) {
+    // An explicit replacement must never inherit an older value from either
+    // the pending intent or the current form state.
+    delete intent.personalInfo.email;
+    if (!conflictCodes.includes("INVALID_EMAIL")) {
+      conflictCodes.push("INVALID_EMAIL");
+    }
+  }
   if (
     !intent.personalInfo.email &&
+    !malformedEmailAttempt &&
     existing?.email &&
     isValidEmail(existing.email)
   ) {
@@ -239,7 +291,9 @@ export function parseFormCommand(
   }
 
   if (intent.personalInfo.email && !isValidEmail(intent.personalInfo.email)) {
-    conflictCodes.push("INVALID_EMAIL");
+    if (!conflictCodes.includes("INVALID_EMAIL")) {
+      conflictCodes.push("INVALID_EMAIL");
+    }
     delete intent.personalInfo.email;
   }
   if (intent.personalInfo.phone && !isValidPhone(intent.personalInfo.phone)) {
