@@ -75,7 +75,9 @@ export function useLanguageTransition() {
     targetSelector: string | HTMLElement | (HTMLElement | Element)[],
     onLocaleChange: () => void,
   ): void => {
-    if (isTransitioning.value) return;
+    // A newer selection supersedes the previous animation. Restoring first
+    // also invalidates the previous async callback via transitionVersion.
+    if (isTransitioning.value) restore();
     if (shouldReduceTransition()) {
       onLocaleChange();
       return;
@@ -129,5 +131,5 @@ export function useLanguageTransition() {
   };
 
   onUnmounted(restore);
-  return { isTransitioning, switchWithDissolve };
+  return { isTransitioning, switchWithDissolve, cancelTransition: restore };
 }

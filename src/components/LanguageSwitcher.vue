@@ -70,7 +70,7 @@ import { setStoredLocale } from "@/i18n";
 import { useLanguageTransition } from "@/composables/useLanguageTransition";
 
 const { locale } = useI18n();
-const { switchWithDissolve, isTransitioning } = useLanguageTransition();
+const { switchWithDissolve, cancelTransition } = useLanguageTransition();
 
 const languages = [
   { code: "zh-CN", label: "简体中文" },
@@ -92,7 +92,6 @@ const currentLanguageLabel = computed(() => {
 });
 
 const toggleDropdown = () => {
-  if (isTransitioning.value) return;
   isOpen.value = !isOpen.value;
   if (isOpen.value) {
     activeIndex.value = Math.max(0, languages.findIndex((lang) => lang.code === locale.value));
@@ -138,7 +137,10 @@ const handleListKeydown = (event: KeyboardEvent) => {
 };
 
 const selectLanguage = (code: string) => {
-  if (code === locale.value || isTransitioning.value) {
+  if (code === locale.value) {
+    // Selecting the current language while a previous switch is fading out
+    // should cancel that pending switch instead of letting it commit later.
+    cancelTransition();
     isOpen.value = false;
     return;
   }

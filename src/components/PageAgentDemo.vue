@@ -272,6 +272,10 @@ const { applyAssistantProgress } = store;
 const { status, activityState, activity, load, stop, dispose } =
   usePageAgentDemo();
 
+// The visible UI can change language without interrupting the Agent. The
+// runtime is reconciled lazily by execute(..., locale) before the next task, so a
+// rapid locale switch never enters a stop/reload race.
+
 const orbRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 const guideRef = ref<HTMLElement | null>(null);
@@ -502,13 +506,6 @@ watch(activity, (next, previous) => {
   if (next.type === "retrying") {
     appendMessage("system", "activity", String(t("agent.activity.retrying")));
   }
-});
-
-watch(locale, async (nextLocale) => {
-  if (!hasConsented.value) return;
-  if (isRunning.value) await handleStop();
-  await load(nextLocale).catch(() => undefined);
-  refreshPanelPosition();
 });
 
 onMounted(() => {

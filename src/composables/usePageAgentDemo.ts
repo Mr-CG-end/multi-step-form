@@ -28,7 +28,9 @@ const errorMessage = ref("");
 const activityState = ref<AgentActivityState>("idle");
 const activity = ref<IPageAgentActivity | null>(null);
 
-let loadedLocale = "";
+// The runtime only distinguishes English from Chinese. zh-CN and zh-TW use
+// the same Page Agent language and should not trigger an unnecessary rebuild.
+let loadedAgentLanguage: "" | "zh-CN" | "en-US" = "";
 let loadPromise: Promise<void> | null = null;
 let activeSnapshot: CommonsSnapshot | null = null;
 let activeIntent: FormIntent | null = null;
@@ -185,10 +187,10 @@ function createHeadlessDemoAgent(targetLang: "zh-CN" | "en-US"): void {
 async function load(locale: string): Promise<void> {
   const targetLang = mapLocaleToAgentLang(locale);
   if (status.value === "running") return;
-  if (loadedLocale === locale && currentAgent) return;
+  if (loadedAgentLanguage === targetLang && currentAgent) return;
   if (loadPromise) {
     await loadPromise;
-    if (loadedLocale !== locale) return load(locale);
+    if (loadedAgentLanguage !== targetLang) return load(locale);
     return;
   }
   const version = runtimeVersion;
@@ -230,7 +232,7 @@ async function load(locale: string): Promise<void> {
 
       if (version !== runtimeVersion) throw new Error("AGENT_LOAD_CANCELLED");
       createHeadlessDemoAgent(targetLang);
-      loadedLocale = locale;
+      loadedAgentLanguage = targetLang;
       status.value = "idle";
       activityState.value = "idle";
     } catch (error: unknown) {
@@ -407,7 +409,7 @@ function dispose(): void {
   disposeInstance();
   document.getElementById(SCRIPT_ID)?.remove();
   window.PageAgent = undefined;
-  loadedLocale = "";
+  loadedAgentLanguage = "";
   loadPromise = null;
   status.value = "idle";
   activityState.value = "idle";
