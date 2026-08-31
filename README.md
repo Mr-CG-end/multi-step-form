@@ -116,10 +116,16 @@ pnpm run build
 
 ### 发布到 GitHub Pages / Deploy
 
+`main` 分支保存项目源码；发布时会先生成 `dist`，再由 `gh-pages` 工具把构建产物推送到专用的 `gh-pages` 分支。GitHub Pages 需设置为从 `gh-pages` 分支的根目录发布，请勿直接在该分支修改源码。
+
+The `main` branch contains the source code. Deployment builds `dist` and publishes those generated files to the dedicated `gh-pages` branch. Configure GitHub Pages to serve from the root of `gh-pages`, and do not edit source code directly on that branch.
+
 ```bash
 # 自动执行 predeploy (构建) 并推送 dist 到 gh-pages 分支
 pnpm run deploy
 ```
+
+发布地址 / Published site: https://mr-cg-end.github.io/multi-step-form/
 
 ---
 
